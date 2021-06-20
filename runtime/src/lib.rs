@@ -274,6 +274,16 @@ impl pallet_template::Config for Runtime {
 	type Event = Event;
 }
 
+impl hello_substrate::Config for Runtime {}
+
+impl generic_event::Config for Runtime {
+	type Event = Event;
+}
+
+impl simple_event::Config for Runtime {
+	type Event = Event;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -291,6 +301,9 @@ construct_runtime!(
 		Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
 		// Include the custom logic from the pallet-template in the runtime.
 		TemplateModule: pallet_template::{Pallet, Call, Storage, Event<T>},
+		HelloSubstrate: hello_substrate::{Pallet, Call},
+		GenericEvent: generic_event::{Pallet, Call, Event<T>},
+		SimpleEvent: simple_event::{Pallet, Call, Event},
 	}
 );
 

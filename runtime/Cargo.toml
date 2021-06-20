@@ -47,6 +47,9 @@ sp-version = {default-features = false, version = '3.0.0', git = 'https://github
 
 # local dependencies
 pallet-template = {default-features = false, version = '3.0.0', path = '../pallets/template'}
+hello-substrate = { path = "../pallets/hello", default-features = false }
+generic-event = { path = "../pallets/generic-event", default-features = false }
+simple-event = { path = "../pallets/simple-event", default-features = false }
 
 [features]
 default = ['std']
@@ -73,6 +76,9 @@ std = [
 	'pallet-randomness-collective-flip/std',
 	'pallet-sudo/std',
 	'pallet-template/std',
+	'hello-substrate/std',
+	'generic-event/std',
+	'simple-event/std',
 	'pallet-timestamp/std',
 	'pallet-transaction-payment-rpc-runtime-api/std',
 	'pallet-transaction-payment/std',
