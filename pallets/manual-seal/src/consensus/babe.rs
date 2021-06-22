@@ -21,7 +21,12 @@
 use super::ConsensusDataProvider;
 use crate::Error;
 use codec::Encode;
-use std::{borrow::Cow, sync::{Arc, atomic}, time::SystemTime};
+use std::{
+	any::Any,
+	borrow::Cow,
+	sync::{Arc, atomic},
+	time::SystemTime,
+};
 use sc_client_api::AuxStore;
 use sc_consensus_babe::{
 	Config, Epoch, authorship, CompatibleDigestItem, BabeIntermediate,
@@ -68,7 +73,7 @@ impl<B, C> BabeConsensusDataProvider<B, C>
 	where
 		B: BlockT,
 		C: AuxStore + HeaderBackend<B> + ProvideRuntimeApi<B> + HeaderMetadata<B, Error = sp_blockchain::Error>,
-		C::Api: BabeApi<B>,
+		C::Api: BabeApi<B, Error = sp_blockchain::Error>,
 {
 	pub fn new(
 		client: Arc<C>,
@@ -85,7 +90,7 @@ impl<B, C> BabeConsensusDataProvider<B, C>
 		let timestamp_provider = SlotTimestampProvider::new(client.clone())?;
 
 		provider.register_provider(timestamp_provider)?;
-		register_babe_inherent_data_provider(provider, config.slot_duration())?;
+		register_babe_inherent_data_provider(provider, config.slot_duration)?;
 
 		Ok(Self {
 			config,
@@ -97,7 +102,7 @@ impl<B, C> BabeConsensusDataProvider<B, C>
 	}
 
 	fn epoch(&self, parent: &B::Header, slot: Slot) -> Result<Epoch, Error> {
-		let epoch_changes = self.epoch_changes.shared_data();
+		let epoch_changes = self.epoch_changes.lock();
 		let epoch_descriptor = epoch_changes
 			.epoch_descriptor_for_child_of(
 				descendent_query(&*self.client),
@@ -126,7 +131,7 @@ impl<B, C> ConsensusDataProvider<B> for BabeConsensusDataProvider<B, C>
 	where
 		B: BlockT,
 		C: AuxStore + HeaderBackend<B> + HeaderMetadata<B, Error = sp_blockchain::Error> + ProvideRuntimeApi<B>,
-		C::Api: BabeApi<B>,
+		C::Api: BabeApi<B, Error = sp_blockchain::Error>,
 {
 	type Transaction = TransactionFor<C, B>;
 
@@ -151,7 +156,7 @@ impl<B, C> ConsensusDataProvider<B> for BabeConsensusDataProvider<B, C>
 				authority_index: 0_u32,
 			});
 
-			let mut epoch_changes = self.epoch_changes.shared_data();
+			let mut epoch_changes = self.epoch_changes.lock();
 			let epoch_descriptor = epoch_changes
 				.epoch_descriptor_for_child_of(
 					descendent_query(&*self.client),
@@ -195,7 +200,7 @@ impl<B, C> ConsensusDataProvider<B> for BabeConsensusDataProvider<B, C>
 		inherents: &InherentData
 	) -> Result<(), Error> {
 		let slot = inherents.babe_inherent_data()?;
-		let epoch_changes = self.epoch_changes.shared_data();
+		let epoch_changes = self.epoch_changes.lock();
 		let mut epoch_descriptor = epoch_changes
 			.epoch_descriptor_for_child_of(
 				descendent_query(&*self.client),
@@ -216,7 +221,7 @@ impl<B, C> ConsensusDataProvider<B> for BabeConsensusDataProvider<B, C>
 
 		if !has_authority {
 			log::info!(target: "manual-seal", "authority not found");
-			let slot = *inherents.timestamp_inherent_data()? / self.config.slot_duration;
+			let slot = inherents.timestamp_inherent_data()? / self.config.slot_duration;
 			// manually hard code epoch descriptor
 			epoch_descriptor = match epoch_descriptor {
 				ViableEpochDescriptor::Signaled(identifier, _header) => {
@@ -234,7 +239,7 @@ impl<B, C> ConsensusDataProvider<B> for BabeConsensusDataProvider<B, C>
 
 		params.intermediates.insert(
 			Cow::from(INTERMEDIATE_KEY),
-			Box::new(BabeIntermediate::<B> { epoch_descriptor }) as Box<_>,
+			Box::new(BabeIntermediate::<B> { epoch_descriptor }) as Box<dyn Any>,
 		);
 
 		Ok(())
@@ -254,7 +259,7 @@ impl SlotTimestampProvider {
 		where
 			B: BlockT,
 			C: AuxStore + HeaderBackend<B> + ProvideRuntimeApi<B>,
-			C::Api: BabeApi<B>,
+			C::Api: BabeApi<B, Error = sp_blockchain::Error>,
 	{
 		let slot_duration = Config::get_or_compute(&*client)?.slot_duration;
 		let info = client.info();
@@ -288,10 +293,7 @@ impl ProvideInherentData for SlotTimestampProvider {
 
 	fn provide_inherent_data(&self, inherent_data: &mut InherentData) -> Result<(), sp_inherents::Error> {
 		// we update the time here.
-		let duration: InherentType = self.time.fetch_add(
-			self.slot_duration,
-			atomic::Ordering::SeqCst,
-		).into();
+		let duration: InherentType = self.time.fetch_add(self.slot_duration, atomic::Ordering::SeqCst);
 		inherent_data.put_data(INHERENT_IDENTIFIER, &duration)?;
 		Ok(())
 	}
