@@ -107,15 +107,15 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
 		// Initialize seed for signing transaction using off-chain workers. This is a convenience
 		// so learners can see the transactions submitted simply running the node.
 		// Typically these keys should be inserted with RPC calls to `author_insertKey`.
-		#[cfg(feature = "ocw")]
-		{
-			sp_keystore::SyncCryptoStore::sr25519_generate_new(
-				&*keystore,
-				runtime::ocw_demo::KEY_TYPE,
-				Some("//Alice"),
-			)
-			.expect("Creating key with account Alice should succeed.");
-		}
+		// #[cfg(feature = "ocw")]
+		// {
+		// 	sp_keystore::SyncCryptoStore::sr25519_generate_new(
+		// 		&*keystore,
+		// 		runtime::ocw_demo::KEY_TYPE,
+		// 		Some("//Alice"),
+		// 	)
+		// 	.expect("Creating key with account Alice should succeed.");
+		// }
 
 		sc_service::build_offchain_workers(
 			&config,
