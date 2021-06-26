@@ -26,6 +26,7 @@ trie-root = "0.15.2"
 # Substrate packages
 sc-basic-authorship = '0.9'
 sc-cli = '0.9'
+# sc-cli = { path = "../client/cli", version = "0.9.0"}
 sc-client-api = '3.0'
 sc-consensus = '0.9'
 # sc-consensus-manual-seal = '0.9'

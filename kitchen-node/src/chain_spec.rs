@@ -53,6 +53,9 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
 					account_id_from_seed::<sr25519::Pair>("Eve//stash"),
 					account_id_from_seed::<sr25519::Pair>("Ferdie//stash"),
 				],
+				vec![
+					account_id_from_seed::<sr25519::Pair>("Bob"),
+				]				
 			)
 		},
 		vec![],

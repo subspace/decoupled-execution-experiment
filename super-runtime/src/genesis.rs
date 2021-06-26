@@ -33,6 +33,9 @@ pub fn dev_genesis(wasm_binary: &[u8]) -> GenesisConfig {
 			account_id_from_seed::<sr25519::Pair>("Alice//stash"),
 			account_id_from_seed::<sr25519::Pair>("Bob//stash"),
 		],
+		vec![
+			account_id_from_seed::<sr25519::Pair>("Bob"),
+		]
 	)
 }
 
@@ -41,6 +44,7 @@ pub fn testnet_genesis(
 	wasm_binary: &[u8],
 	root_key: AccountId,
 	endowed_accounts: Vec<AccountId>,
+	executor_authority: Vec<AccountId>,
 ) -> GenesisConfig {
 	GenesisConfig {
 		system: Some(SystemConfig {
@@ -55,6 +59,7 @@ pub fn testnet_genesis(
 				.collect(),
 		}),
 		pallet_sudo: Some(SudoConfig { key: root_key }),
+    	exec_membership: Some(exec_membership::GenesisConfig { executor_authority }),
 		// charity: Some(Default::default()),
 	}
 }
