@@ -145,11 +145,11 @@ impl<T: Config> InitializeMembers<T::AccountId> for Module<T> {
 }
 
 impl<T: Config> Module<T> {
-    fn accounts() -> BTreeSet<T::AccountId> {
+    pub fn accounts() -> BTreeSet<T::AccountId> {
         Self::members().into_iter().collect::<BTreeSet<_>>()
     }
 
-    fn is_member(account: <T as frame_system::Config>::AccountId) -> bool {
+    pub fn is_member(account: <T as frame_system::Config>::AccountId) -> bool {
         // Get the members from the `vec-set` pallet
         let members = Module::<T>::members();
         // Check whether the account is a member

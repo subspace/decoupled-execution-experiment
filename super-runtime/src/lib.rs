@@ -331,9 +331,9 @@ parameter_types! {
 // 	type Event = Event;
 // }
 
-impl struct_storage::Config for Runtime {
-	type Event = Event;
-}
+// impl exec_receipt_storage::Config for Runtime {
+// 	type Event = Event;
+// }
 
 // impl vec_set::Config for Runtime {
 // 	type Event = Event;
@@ -380,7 +380,7 @@ construct_runtime!(
 		// SimpleEvent: simple_event::{Module, Call, Event},
 		// SimpleMap: simple_map::{Module, Call, Storage, Event<T>},
 		// StorageCache: storage_cache::{Module, Call, Storage, Event<T>},
-		StructStorage: struct_storage::{Module, Call, Storage, Event<T>},
+		// ReceiptStorage: exec_receipt_storage::{Module, Call, Storage, Event<T>},
 		// VecSet: vec_set::{Module, Call, Storage, Event<T>},
 		Executor: exec_membership::{Module, Call, Storage, Config<T>, Event<T>},
 	}
@@ -486,4 +486,11 @@ impl_runtime_apis! {
 			None
 		}
 	}
+
+	impl exec_membership_runtime::ExecutorMemberApi<Block, AccountId> for Runtime {
+		fn is_executor(account: AccountId) -> bool {
+			Executor::is_member(account)
+		}
+	}	
 }
+
