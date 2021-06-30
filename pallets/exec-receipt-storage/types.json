@@ -1,0 +1,8 @@
+{
+  "Receipt": {
+      "final_root_balance": "Hash",
+      "last_block": "Hash",
+      "executor": "AccountId",
+      "signed_root_balance": "Signature"
+  }
+}
