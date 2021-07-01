@@ -1,6 +1,11 @@
 # Changes
 
+## 2021 Jun 30
+
+* Included KeyTypeId "exec" as keystore type used for executor
+
 ## 2021 Jun 29
+
 * Basic Receipt Storage with gossip method
 
 ## 2021 Jun 28
