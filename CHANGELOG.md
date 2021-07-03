@@ -1,5 +1,9 @@
 # Changes
 
+## 2021 Jul 2
+
+* Refactor from AccountId to AuthorityId from new primitive executor
+
 ## 2021 Jun 30
 
 * Included KeyTypeId "exec" as keystore type used for executor

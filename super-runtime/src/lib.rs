@@ -343,6 +343,7 @@ parameter_types! {
 
 impl exec_membership::Config for Runtime {
 	type Event = Event;
+	type AuthorityId = sp_executor::AuthorityId;
 }
 
 construct_runtime!(
@@ -487,8 +488,8 @@ impl_runtime_apis! {
 		}
 	}
 
-	impl exec_membership_runtime::ExecutorMemberApi<Block, AccountId> for Runtime {
-		fn is_executor(account: AccountId) -> bool {
+	impl exec_membership_runtime::ExecutorMemberApi<Block, sp_executor::AuthorityId> for Runtime {
+		fn is_executor(account: sp_executor::AuthorityId) -> bool {
 			Executor::is_member(account)
 		}
 	}	

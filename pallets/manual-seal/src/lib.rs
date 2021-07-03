@@ -241,7 +241,7 @@ pub async fn run_instant_seal<B, BI, CB, E, C, A, SC>(
 		.map(|_| {
 			EngineCommand::SealNewBlock {
 				create_empty: false,
-				finalize: false,
+				finalize: true,
 				parent_hash: None,
 				sender: None,
 			}

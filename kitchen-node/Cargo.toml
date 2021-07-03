@@ -46,6 +46,7 @@ sp-timestamp = '3.0'
 sp-transaction-pool = '3.0'
 
 # local packages
+sp-executor = { path = "../primitives/executor", default-features = false }
 
 # This node is compatible with any of the runtimes below
 # ---

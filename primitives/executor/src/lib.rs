@@ -39,8 +39,8 @@ use log::debug;
 pub const KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"exec");
 
 mod app {
-	use sp_application_crypto::{app_crypto, ed25519};
-	app_crypto!(ed25519, crate::KEY_TYPE);
+	use sp_application_crypto::{app_crypto, sr25519};
+	app_crypto!(sr25519, crate::KEY_TYPE);
 }
 
 sp_application_crypto::with_pair! {

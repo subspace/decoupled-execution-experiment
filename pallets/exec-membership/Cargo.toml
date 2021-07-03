@@ -4,7 +4,7 @@ version = "3.0.0"
 edition = "2018"
 authors = ['Substrate DevHub <https://github.com/substrate-developer-hub>']
 repository = 'https://github.com/substrate-developer-hub/recipes'
-description = "A charitable organization that accepts donations and imbalances"
+description = "Executors membership for decoupling consensus"
 license = "GPL-3.0-or-later"
 
 [dependencies]
@@ -17,6 +17,7 @@ frame-support = { version = '3.0', default-features = false }
 frame-system = { version = '3.0', default-features = false }
 sp-runtime = { version = '3.0', default-features = false }
 sp-std = { version = '3.0', default-features = false }
+# sp-executor = { path = "../../primitives/executor", default-features = false }
 
 [dev-dependencies]
 sp-core = '3.0'
@@ -30,4 +31,5 @@ std = [
 	'frame-system/std',
 	'parity-scale-codec/std',
 	'sp-runtime/std',
+	# 'sp-executor/std',
 ]

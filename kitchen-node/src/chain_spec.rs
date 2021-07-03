@@ -1,5 +1,5 @@
 use runtime::{
-	genesis::{account_id_from_seed, dev_genesis, testnet_genesis},
+	genesis::{account_id_from_seed, dev_genesis, testnet_genesis, get_from_seed2},
 	GenesisConfig, WASM_BINARY,
 };
 use sp_core::sr25519;
@@ -54,7 +54,7 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
 					account_id_from_seed::<sr25519::Pair>("Ferdie//stash"),
 				],
 				vec![
-					account_id_from_seed::<sr25519::Pair>("Bob"),
+					get_from_seed2::<sp_executor::AuthorityId>("Bob"),
 				]				
 			)
 		},

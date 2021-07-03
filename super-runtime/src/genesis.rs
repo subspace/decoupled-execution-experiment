@@ -1,12 +1,19 @@
 //! Helper module to build a genesis configuration for the super-runtime
 
 use super::{AccountId, BalancesConfig, GenesisConfig, Signature, SudoConfig, SystemConfig};
-use sp_core::{sr25519, Pair};
+use sp_core::{Pair, Public, sr25519};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 
 /// Helper function to generate a crypto pair from seed
 fn get_from_seed<TPair: Pair>(seed: &str) -> TPair::Public {
 	TPair::from_string(&format!("//{}", seed), None)
+		.expect("static values are valid; qed")
+		.public()
+}
+
+/// Generate a crypto pair from seed.
+pub fn get_from_seed2<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
+	TPublic::Pair::from_string(&format!("//{}", seed), None)
 		.expect("static values are valid; qed")
 		.public()
 }
@@ -34,7 +41,7 @@ pub fn dev_genesis(wasm_binary: &[u8]) -> GenesisConfig {
 			account_id_from_seed::<sr25519::Pair>("Bob//stash"),
 		],
 		vec![
-			account_id_from_seed::<sr25519::Pair>("Bob"),
+			get_from_seed2::<sp_executor::AuthorityId>("Bob"),
 		]
 	)
 }
@@ -44,7 +51,7 @@ pub fn testnet_genesis(
 	wasm_binary: &[u8],
 	root_key: AccountId,
 	endowed_accounts: Vec<AccountId>,
-	executor_authority: Vec<AccountId>,
+	executor_authority: Vec<sp_executor::AuthorityId>,
 ) -> GenesisConfig {
 	GenesisConfig {
 		system: Some(SystemConfig {

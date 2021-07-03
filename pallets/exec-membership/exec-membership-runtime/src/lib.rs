@@ -11,9 +11,10 @@ use sp_std::prelude::Vec;
 use codec::Codec;
 
 sp_api::decl_runtime_apis! {
-	pub trait ExecutorMemberApi<AccountId> where
-		AccountId: Codec,
+	pub trait ExecutorMemberApi<AuthorityId> where
+	AuthorityId: Codec,
 	{    
-        fn is_executor(account: AccountId) -> bool;
+        fn is_executor(account: AuthorityId) -> bool;
+		// fn am_i_executor() -> bool;
     }
 }

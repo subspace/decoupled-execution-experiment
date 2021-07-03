@@ -1,15 +1,20 @@
 //! A Simple executor membership which holds executor authorities.
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use frame_system::ensure_signed;
+use sp_runtime::{
+    traits::{IsMember, Member},
+    RuntimeAppPublic,
+};
 use sp_std::prelude::*;
 
 use frame_support::{
     decl_error, decl_event, decl_module, decl_storage,
     dispatch::{DispatchError, DispatchResult},
     ensure,
-    traits::{ChangeMembers, EnsureOrigin, Get, InitializeMembers},
+    pallet_prelude::MaybeSerializeDeserialize,
+    Parameter,
 };
-use frame_system::ensure_signed;
 use sp_std::collections::btree_set::BTreeSet;
 
 // #[cfg(test)]
@@ -20,19 +25,26 @@ pub const MAX_MEMBERS: usize = 16;
 
 pub trait Config: frame_system::Config {
     type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
+    /// The identifier type for an authority.
+    type AuthorityId: Member
+        + Parameter
+        + RuntimeAppPublic
+        + Default
+        + MaybeSerializeDeserialize
+        + Ord;
 }
 
 decl_event!(
     pub enum Event<T>
     where
-        AccountId = <T as frame_system::Config>::AccountId,
+        AuthorityId = <T as Config>::AuthorityId,
     {
         /// The caller is a member.
-        IsAMember(AccountId),
+        IsAMember(AuthorityId),
         /// Added a member
-        MemberAdded(AccountId),
+        MemberAdded(AuthorityId),
         /// Removed a member
-        MemberRemoved(AccountId),
+        MemberRemoved(AuthorityId),
     }
 );
 
@@ -50,12 +62,12 @@ decl_error! {
 decl_storage! {
     trait Store for Module<T: Config> as VecSet {
         // The set of all members. Stored as a single vec
-        Members get(fn members): Vec<T::AccountId>;
+        Members get(fn members): Vec<T::AuthorityId>;
     }
     add_extra_genesis {
-        config(executor_authority): Vec<T::AccountId>;
+        config(executor_authority): Vec<T::AuthorityId>;
         build(|config| {
-            Module::<T>::initialize_members(&config.executor_authority)
+            Module::<T>::initialize_authorities(&config.executor_authority)
         });
     }
 }
@@ -66,10 +78,10 @@ decl_module! {
 
         type Error = Error<T>;
 
-        /// Adds a member to the membership set unless the max is reached
+        // /// Adds a member to the membership set unless the max is reached
         #[weight = 10_000]
-        pub fn add_member(origin) -> DispatchResult {
-            let new_member = ensure_signed(origin)?;
+        pub fn add_member(origin, new_member: T::AuthorityId) -> DispatchResult {
+            let _new_member = ensure_signed(origin)?;
 
             let mut members = Members::<T>::get();
             ensure!(members.len() < MAX_MEMBERS, Error::<T>::MembershipLimitReached);
@@ -93,8 +105,8 @@ decl_module! {
 
         /// Removes a member.
         #[weight = 10_000]
-        fn remove_member(origin) -> DispatchResult {
-            let old_member = ensure_signed(origin)?;
+        fn remove_member(origin, old_member: T::AuthorityId) -> DispatchResult {
+            let _old_member = ensure_signed(origin)?;
 
             let mut members = Members::<T>::get();
 
@@ -116,8 +128,8 @@ decl_module! {
         /// Checks whether the caller is a member of the set of account IDs provided by the `vec-set`
         /// pallet. Emits an event if they are, and errors if not.
         #[weight = 10_000]
-        fn check_membership(origin) -> DispatchResult {
-            let caller = ensure_signed(origin)?;
+        fn check_membership(origin, caller: T::AuthorityId) -> DispatchResult {
+            let _caller = ensure_signed(origin)?;
 
             // Get the members from the `vec-set` pallet
             let members = Module::<T>::members();
@@ -132,27 +144,43 @@ decl_module! {
     }
 }
 
-impl<T: Config> InitializeMembers<T::AccountId> for Module<T> {
-    fn initialize_members(members: &[T::AccountId]) {
-        if !members.is_empty() {
-            assert!(
-                <Members<T>>::get().is_empty(),
-                "Members are already initialized!"
-            );
-            <Members<T>>::put(members);
-        }
-    }
-}
+// impl<T: Config> InitializeMembers<T::AccountId> for Module<T> {
+//     fn initialize_members(members: &[T::AccountId]) {
+//         if !members.is_empty() {
+//             assert!(
+//                 <Members<T>>::get().is_empty(),
+//                 "Members are already initialized!"
+//             );
+//             <Members<T>>::put(members);
+//         }
+//     }
+// }
 
 impl<T: Config> Module<T> {
-    pub fn accounts() -> BTreeSet<T::AccountId> {
+    pub fn accounts() -> BTreeSet<T::AuthorityId> {
         Self::members().into_iter().collect::<BTreeSet<_>>()
     }
 
-    pub fn is_member(account: <T as frame_system::Config>::AccountId) -> bool {
+    pub fn is_member(account: T::AuthorityId) -> bool {
         // Get the members from the `vec-set` pallet
         let members = Module::<T>::members();
         // Check whether the account is a member
         members.binary_search(&account).is_ok()
+    }
+
+    fn initialize_authorities(authorities: &[T::AuthorityId]) {
+        if !authorities.is_empty() {
+            assert!(
+                Members::<T>::get().is_empty(),
+                "Authorities are already initialized!"
+            );
+            Members::<T>::put(authorities);
+        }
+    }
+}
+
+impl<T: Config> IsMember<T::AuthorityId> for Module<T> {
+    fn is_member(authority_id: &T::AuthorityId) -> bool {
+        Self::members().iter().any(|id| id == authority_id)
     }
 }
