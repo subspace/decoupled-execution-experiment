@@ -1,5 +1,9 @@
 # Changes
 
+## 2021 Jul 4
+
+* Include executor discovery and initial effort to send ER after block import from Instant Seal
+
 ## 2021 Jul 2
 
 * Refactor from AccountId to AuthorityId from new primitive executor

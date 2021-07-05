@@ -1,0 +1,17 @@
+[package]
+name = "executor-discovery"
+version = "0.1.0"
+authors = ["mmacedoeu <contato@mmacedo.eu.org>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+sp-blockchain = { version = "3.0.0"}
+sp-api = { version = "3.0.0" }
+sp-runtime = { version = "3.0.0" }
+sp-keystore = { version = "0.9.0" }
+
+sp-executor = { path = "../../primitives/executor", default-features = false }
+exec-membership-runtime = { path = '../../pallets/exec-membership/exec-membership-runtime', default-features = false }

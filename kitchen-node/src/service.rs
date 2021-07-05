@@ -132,7 +132,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
 	sc_service::spawn_tasks(sc_service::SpawnTasksParams {
 		network,
 		client: client.clone(),
-		keystore,
+		keystore: keystore.clone(),
 		task_manager: &mut task_manager,
 		transaction_pool: transaction_pool.clone(),
 		rpc_extensions_builder: Box::new(|_, _| ()),
@@ -160,6 +160,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
 			select_chain,
 			consensus_data_provider: None,
 			inherent_data_providers,
+    		keystore,
 		});
 
 		task_manager

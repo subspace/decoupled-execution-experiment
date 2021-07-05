@@ -60,6 +60,10 @@ sp-timestamp = {version = '3.0.0'}
 # prometheus-endpoint = {version = '0.9.0', git = 'https://github.com/paritytech/substrate.git', tag = 'monthly-2021-05'}
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", path = "../../utils/prometheus", version = "0.9.0"}
 
+executor-discovery = { path = "../../client/executor-discovery", default-features = false }
+sp-executor = { path = "../../primitives/executor", default-features = false }
+exec-membership-runtime = { path = '../../pallets/exec-membership/exec-membership-runtime', default-features = false }
+
 [dev-dependencies]
 tokio = { version = "0.2", features = ["rt-core", "macros"] }
 # sc-basic-authorship= {version = '0.9.0', git = 'https://github.com/paritytech/substrate.git', tag = 'v3.0.0'}

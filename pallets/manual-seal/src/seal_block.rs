@@ -20,6 +20,8 @@
 
 use crate::{Error, rpc, CreatedBlock, ConsensusDataProvider};
 use std::sync::Arc;
+use exec_membership_runtime::ExecutorMemberApi;
+use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::{
 	traits::{Block as BlockT, Header as HeaderT},
 	generic::BlockId,
@@ -35,6 +37,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use sp_inherents::InherentDataProviders;
 use sp_api::{ProvideRuntimeApi, TransactionFor};
+use sp_executor::{AuthorityId};
 
 /// max duration for creating a proposal in secs
 pub const MAX_PROPOSAL_DURATION: u64 = 10;
@@ -64,6 +67,8 @@ pub struct SealBlockParams<'a, B: BlockT, BI, SC, C: ProvideRuntimeApi<B>, E, P:
 	pub block_import: &'a mut BI,
 	/// inherent data provider
 	pub inherent_data_provider: &'a InherentDataProviders,
+
+	pub keystore: SyncCryptoStorePtr,	
 }
 
 /// seals a new block with the given params
@@ -80,6 +85,7 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 		inherent_data_provider,
 		consensus_data_provider: digest_provider,
 		mut sender,
+		keystore,
 		..
 	}: SealBlockParams<'_, B, BI, SC, C, E, P>
 )
@@ -88,6 +94,7 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 		BI: BlockImport<B, Error = sp_consensus::Error, Transaction = sp_api::TransactionFor<C, B>>
 			+ Send + Sync + 'static,
 		C: HeaderBackend<B> + ProvideRuntimeApi<B>,
+		// <C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
 		E: Environment<B>,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,
 		P: txpool::ChainApi<Block=B>,
@@ -143,6 +150,9 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 
 		match block_import.import_block(params, HashMap::new())? {
 			ImportResult::Imported(aux) => {
+				// let executor = am_i_executor(keystore.clone(),client.as_ref()).await.expect("for now don't expect errors");
+				let state_root = header.state_root();
+
 				Ok(CreatedBlock { hash: <B as BlockT>::Header::hash(&header), aux })
 			},
 			other => Err(other.into()),
