@@ -20,8 +20,11 @@
 
 use crate::{Error, rpc, CreatedBlock, ConsensusDataProvider};
 use std::sync::Arc;
+use codec::Encode;
 use exec_membership_runtime::ExecutorMemberApi;
-use sp_keystore::SyncCryptoStorePtr;
+use executor_discovery::am_i_executor;
+use sp_core::Public;
+use sp_keystore::{CryptoStore, SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::{
 	traits::{Block as BlockT, Header as HeaderT},
 	generic::BlockId,
@@ -36,8 +39,9 @@ use sp_blockchain::HeaderBackend;
 use std::collections::HashMap;
 use std::time::Duration;
 use sp_inherents::InherentDataProviders;
-use sp_api::{ProvideRuntimeApi, TransactionFor};
-use sp_executor::{AuthorityId};
+use sp_api::{ApiErrorFor, ProvideRuntimeApi, TransactionFor};
+use sp_executor::{AuthorityId, KEY_TYPE};
+use std::collections::HashSet;
 
 /// max duration for creating a proposal in secs
 pub const MAX_PROPOSAL_DURATION: u64 = 10;
@@ -68,7 +72,7 @@ pub struct SealBlockParams<'a, B: BlockT, BI, SC, C: ProvideRuntimeApi<B>, E, P:
 	/// inherent data provider
 	pub inherent_data_provider: &'a InherentDataProviders,
 
-	pub keystore: SyncCryptoStorePtr,	
+	// pub keystore: SyncCryptoStorePtr,	
 }
 
 /// seals a new block with the given params
@@ -85,16 +89,16 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 		inherent_data_provider,
 		consensus_data_provider: digest_provider,
 		mut sender,
-		keystore,
 		..
-	}: SealBlockParams<'_, B, BI, SC, C, E, P>
+	}: SealBlockParams<'_, B, BI, SC, C, E, P>,
+	keystore: Arc<dyn CryptoStore>,
 )
 	where
-		B: BlockT,
+		B: BlockT + Unpin + 'static,
 		BI: BlockImport<B, Error = sp_consensus::Error, Transaction = sp_api::TransactionFor<C, B>>
 			+ Send + Sync + 'static,
-		C: HeaderBackend<B> + ProvideRuntimeApi<B>,
-		// <C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
+		C: ProvideRuntimeApi<B> + 'static + HeaderBackend<B>,
+		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
 		E: Environment<B>,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,
 		P: txpool::ChainApi<Block=B>,
@@ -150,8 +154,7 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 
 		match block_import.import_block(params, HashMap::new())? {
 			ImportResult::Imported(aux) => {
-				// let executor = am_i_executor(keystore.clone(),client.as_ref()).await.expect("for now don't expect errors");
-				let state_root = header.state_root();
+
 
 				Ok(CreatedBlock { hash: <B as BlockT>::Header::hash(&header), aux })
 			},
@@ -161,3 +164,31 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 
 	rpc::send_result(&mut sender, future.await)
 }
+
+// async fn build_er_extrinsic_and_send<Client, Block>(keystore: Arc<dyn CryptoStore>, client: &Client, header: &Block::Header) 
+// where 
+//     Block: BlockT + Unpin + 'static,
+//     Client: ProvideRuntimeApi<Block> + 'static + HeaderBackend<Block>,
+//     <Client as ProvideRuntimeApi<Block>>::Api: ExecutorMemberApi<Block, AuthorityId>,
+// {
+// 	let executor = am_i_executor(keystore.clone(),client).await.expect("for now don't expect errors");
+// 	if let Some(authority) = executor { 
+// 		let state_root = header.state_root();
+// 		let best_hash = client.info().best_hash;
+// 		let mut encoded = Vec::new();
+// 		state_root.encode_to(&mut encoded);
+		// let signature = SyncCryptoStore::sign_with(
+		// 	&*keystore,
+		// 	KEY_TYPE,
+		// 	&authority.to_public_crypto_pair(),
+		// 	&encoded[..],
+		// ).ok().expect("sign should not fail");
+
+		// let er = Receipt {
+		// 	final_root_balance: state_root.clone(),
+		// 	last_block: best_hash.clone(), //current
+		// 	executor: authority.clone(),
+		// 	signed_root_balance: Signature,
+		// }
+// 	}
+// }

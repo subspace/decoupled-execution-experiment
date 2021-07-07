@@ -19,6 +19,7 @@
 //! A manual sealing engine: the engine listens for rpc calls to seal blocks and create forks.
 //! This is suitable for a testing environment.
 
+use exec_membership_runtime::ExecutorMemberApi;
 // use exec_membership_runtime::ExecutorMemberApi;
 use futures::prelude::*;
 use sp_consensus::{
@@ -34,7 +35,7 @@ use sc_client_api::backend::{Backend as ClientBackend, Finalizer};
 use sc_transaction_pool::txpool;
 use std::{sync::Arc, marker::PhantomData};
 use prometheus_endpoint::Registry;
-use sp_keystore::SyncCryptoStorePtr;
+use sp_keystore::{CryptoStore, SyncCryptoStorePtr};
 
 mod error;
 mod finalize_block;
@@ -118,8 +119,6 @@ pub struct ManualSealParams<B: BlockT, BI, E, C: ProvideRuntimeApi<B>, A: txpool
 
 	/// Provider for inherents to include in blocks.
 	pub inherent_data_providers: InherentDataProviders,
-
-	pub keystore: SyncCryptoStorePtr,	
 }
 
 /// Params required to start the manual sealing authorship task.
@@ -145,7 +144,7 @@ pub struct InstantSealParams<B: BlockT, BI, E, C: ProvideRuntimeApi<B>, A: txpoo
 	/// Provider for inherents to include in blocks.
 	pub inherent_data_providers: InherentDataProviders,
 
-	pub keystore: SyncCryptoStorePtr,
+	pub keystore: Arc<dyn CryptoStore>,
 }
 
 /// Creates the background authorship task for the manual seal engine.
@@ -159,17 +158,17 @@ pub async fn run_manual_seal<B, BI, CB, E, C, A, SC, CS>(
 		select_chain,
 		inherent_data_providers,
 		consensus_data_provider,
-		keystore,
 		..
-	}: ManualSealParams<B, BI, E, C, A, SC, CS>
+	}: ManualSealParams<B, BI, E, C, A, SC, CS>,
+	keystore: Arc<dyn CryptoStore>,
 )
 	where
 		A: txpool::ChainApi<Block=B> + 'static,
-		B: BlockT + 'static,
+		B: BlockT + Unpin + 'static,
 		BI: BlockImport<B, Error = sp_consensus::Error, Transaction = sp_api::TransactionFor<C, B>>
 			+ Send + Sync + 'static,
 		C: HeaderBackend<B> + Finalizer<B, CB> + ProvideRuntimeApi<B> + 'static,
-		// <C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
+		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
 		CB: ClientBackend<B> + 'static,
 		E: Environment<B> + 'static,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,
@@ -198,8 +197,8 @@ pub async fn run_manual_seal<B, BI, CB, E, C, A, SC, CS>(
 						consensus_data_provider: consensus_data_provider.as_ref().map(|p| &**p),
 						pool: pool.clone(),
 						client: client.clone(),
-						keystore: keystore.clone(),
-					}
+					},
+					keystore.clone(),
 				).await;
 			}
 			EngineCommand::FinalizeBlock { hash, sender, justification } => {
@@ -235,11 +234,11 @@ pub async fn run_instant_seal<B, BI, CB, E, C, A, SC>(
 )
 	where
 		A: txpool::ChainApi<Block=B> + 'static,
-		B: BlockT + 'static,
+		B: BlockT + Unpin + 'static,
 		BI: BlockImport<B, Error = sp_consensus::Error, Transaction = sp_api::TransactionFor<C, B>>
 			+ Send + Sync + 'static,
 		C: HeaderBackend<B> + Finalizer<B, CB> + ProvideRuntimeApi<B> + 'static,
-		// <C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
+		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
 		CB: ClientBackend<B> + 'static,
 		E: Environment<B> + 'static,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,
@@ -269,8 +268,8 @@ pub async fn run_instant_seal<B, BI, CB, E, C, A, SC>(
 			select_chain,
 			consensus_data_provider,
 			inherent_data_providers,
-			keystore,
-		}
+		},
+		keystore,
 	).await
 }
 
