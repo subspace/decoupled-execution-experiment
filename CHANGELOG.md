@@ -1,6 +1,12 @@
 # Changes
 
+## 2021 Jul 7
+
+* Setup Receipt Storage in Runtime
+* Further work on build and send ER, submit to pool
+
 ## 2021 Jul 6
+
 * Refactor Receipt Storage to use AuthorityId
 * Further work on build and send ER, signing state root
 

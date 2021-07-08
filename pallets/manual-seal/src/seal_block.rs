@@ -22,13 +22,11 @@ use crate::{Error, rpc, CreatedBlock, ConsensusDataProvider};
 use std::sync::Arc;
 use codec::Encode;
 use exec_membership_runtime::ExecutorMemberApi;
+use exec_receipt_storage::Receipt;
 use executor_discovery::am_i_executor;
 use sp_core::Public;
 use sp_keystore::{CryptoStore, SyncCryptoStore, SyncCryptoStorePtr};
-use sp_runtime::{
-	traits::{Block as BlockT, Header as HeaderT},
-	generic::BlockId,
-};
+use sp_runtime::{generic::{BlockId}, traits::{Block as BlockT, Header as HeaderT}};
 use futures::prelude::*;
 use sc_transaction_pool::txpool;
 use sp_consensus::{
@@ -154,8 +152,7 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 
 		match block_import.import_block(params, HashMap::new())? {
 			ImportResult::Imported(aux) => {
-
-
+				//build_er_extrinsic_and_send
 				Ok(CreatedBlock { hash: <B as BlockT>::Header::hash(&header), aux })
 			},
 			other => Err(other.into()),
@@ -177,18 +174,30 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 // 		let best_hash = client.info().best_hash;
 // 		let mut encoded = Vec::new();
 // 		state_root.encode_to(&mut encoded);
-		// let signature = SyncCryptoStore::sign_with(
-		// 	&*keystore,
-		// 	KEY_TYPE,
-		// 	&authority.to_public_crypto_pair(),
-		// 	&encoded[..],
-		// ).ok().expect("sign should not fail");
+// 		let signature = keystore.sign_with(
+// 			KEY_TYPE,
+// 			&authority.to_public_crypto_pair(),
+// 			&encoded[..],
+// 		).await.expect("should not fail");
 
-		// let er = Receipt {
-		// 	final_root_balance: state_root.clone(),
-		// 	last_block: best_hash.clone(), //current
-		// 	executor: authority.clone(),
-		// 	signed_root_balance: Signature,
-		// }
+// 		let er = Receipt {
+// 			final_root_balance: state_root.clone(),
+// 			last_block: best_hash.clone(), //current
+// 			executor: authority.clone(),
+// 			signed_root_balance: signature,
+// 		};
+
+// 		let xt = CheckedExtrinsic {
+// 			signed: None,
+// 			function: exec_receipt_storage::Call::broadcast_receipt(er),
+// 		};
+
+// 		pool
+// 		.submit_one(&BlockId::hash(best_hash), sp_transaction_pool::TransactionSource::External, xt)
+// 		.compat()
+// 		.map_err(|e| e.into_pool_error()
+// 			.map(Into::into)
+// 			.unwrap_or_else(|e| error::Error::Verification(Box::new(e)).into()))		
+
 // 	}
 // }

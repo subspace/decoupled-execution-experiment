@@ -2,8 +2,6 @@
 
 //! Exec Receipt Storage
 
-use std::hash::Hash;
-
 use sp_std::prelude::*;
 
 use frame_support::{Parameter, codec::{Decode, Encode}, decl_error, decl_event, decl_module, decl_storage, dispatch::{DispatchError, DispatchResult}, ensure, pallet_prelude::{MaybeSerializeDeserialize, Member}, traits::{ChangeMembers, EnsureOrigin, Get, InitializeMembers}};
@@ -64,8 +62,8 @@ decl_module! {
 
         // method broadcast
         #[weight = 10_000]
-        pub fn broadcast_receipt(origin, receipt: Receipt<<T as frame_system::Config>::Hash,  T::AuthorityId, T::GenericSignature>) -> DispatchResult {
-            let _ = ensure_signed(origin)?;
+        pub fn broadcast_receipt(_origin, receipt: Receipt<<T as frame_system::Config>::Hash,  T::AuthorityId, T::GenericSignature>) -> DispatchResult {
+            // let _ = ensure_signed(origin)?;
             let mut received = Received::<T>::get();
             let hash = receipt.last_block;
             received.push(receipt);

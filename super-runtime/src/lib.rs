@@ -346,6 +346,12 @@ impl exec_membership::Config for Runtime {
 	type AuthorityId = sp_executor::AuthorityId;
 }
 
+impl exec_receipt_storage::Config for Runtime {
+	type Event = Event;
+	type AuthorityId = sp_executor::AuthorityId;
+	type GenericSignature = sp_executor::AuthoritySignature;
+}
+
 construct_runtime!(
 	pub enum Runtime where
 		Block = Block,
@@ -384,6 +390,7 @@ construct_runtime!(
 		// ReceiptStorage: exec_receipt_storage::{Module, Call, Storage, Event<T>},
 		// VecSet: vec_set::{Module, Call, Storage, Event<T>},
 		Executor: exec_membership::{Module, Call, Storage, Config<T>, Event<T>},
+		ReceiptStorage: exec_receipt_storage::{Module, Call, Storage, Event<T>},
 	}
 );
 

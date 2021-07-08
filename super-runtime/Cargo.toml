@@ -53,11 +53,10 @@ pallet-transaction-payment = { version = '3.0', default-features = false }
 # simple-event = { path = "../../pallets/simple-event", default-features = false }
 # simple-map = { path = "../../pallets/simple-map", default-features = false }
 # storage-cache = { path = "../../pallets/storage-cache", default-features = false }
-# exec-receipt-storage = { path = "../pallets/exec-receipt-storage", default-features = false }
 # vec-set = { path = "../../pallets/vec-set", default-features = false }
 exec-membership-runtime = { path = '../pallets/exec-membership/exec-membership-runtime', default-features = false }
 exec-membership = { path = "../pallets/exec-membership", default-features = false }
-# exec-membership-runtime = { path = "../pallets/exec-membership", default-features = false }
+exec-receipt-storage = { path = "../pallets/exec-receipt-storage", default-features = false }
 
 sp-executor = { path = "../primitives/executor", default-features = false }
 
@@ -110,6 +109,7 @@ std = [
 	"pallet-timestamp/std",
 	"pallet-transaction-payment/std",
 	# "vec-set/std",
-	'exec-membership-runtime/std',
+	"exec-membership-runtime/std",
 	"exec-membership/std",
+	"exec-receipt-storage/std"
 ]
