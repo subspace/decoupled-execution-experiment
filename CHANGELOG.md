@@ -1,5 +1,9 @@
 # Changes
 
+## 2021 Jul 8
+
+* Further work on send ER, submit to pool
+
 ## 2021 Jul 7
 
 * Setup Receipt Storage in Runtime

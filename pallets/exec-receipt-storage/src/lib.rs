@@ -2,6 +2,7 @@
 
 //! Exec Receipt Storage
 
+use sp_executor::Receipt;
 use sp_std::prelude::*;
 
 use frame_support::{Parameter, codec::{Decode, Encode}, decl_error, decl_event, decl_module, decl_storage, dispatch::{DispatchError, DispatchResult}, ensure, pallet_prelude::{MaybeSerializeDeserialize, Member}, traits::{ChangeMembers, EnsureOrigin, Get, InitializeMembers}};
@@ -31,13 +32,13 @@ pub trait Config: frame_system::Config {
         + Eq;
 }
 
-#[derive(Encode, Decode, Clone, Default, PartialEq, Eq, RuntimeDebug)]
-pub struct Receipt<Hash, AuthorityId, Signature> {
-    final_root_balance: Hash,
-    last_block: Hash, //current
-    executor: AuthorityId,
-    signed_root_balance: Signature,
-}
+// #[derive(Encode, Decode, Clone, Default, PartialEq, Eq, RuntimeDebug)]
+// pub struct Receipt<Hash, AuthorityId, Signature> {
+//     pub final_root_balance: Hash,
+//     pub last_block: Hash, //current
+//     pub executor: AuthorityId,
+//     pub signed_root_balance: Signature,
+// }
 
 decl_storage! {
     trait Store for Module<T: Config> as ReceiptStore {

@@ -17,6 +17,7 @@ frame-system = { version = '3.0', default-features = false }
 sp-runtime = { version = '3.0', default-features = false }
 sp-std = { version = '3.0', default-features = false }
 sp-core = { version = '3.0', default-features = false }
+sp-executor = { path = "../../primitives/executor", default-features = false }
 
 [dev-dependencies]
 serde = '1.0'
@@ -33,4 +34,5 @@ std = [
 	'sp-runtime/std',
 	'sp-std/std',
 	'sp-core/std',
+	'sp-executor/std',
 ]
