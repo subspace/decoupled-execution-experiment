@@ -60,3 +60,11 @@ pub type AuthorityId = app::Public;
 
 /// Signature for a EXECUTOR authority.
 pub type AuthoritySignature = app::Signature;
+
+#[derive(Encode, Decode, Clone, Default, PartialEq, Eq, RuntimeDebug)]
+pub struct Receipt<Hash, AuthorityId, Signature> {
+    pub final_root_balance: Hash,
+    pub last_block: Hash, //current
+    pub executor: AuthorityId,
+    pub signed_root_balance: Signature,
+}

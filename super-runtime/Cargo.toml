@@ -57,7 +57,7 @@ pallet-transaction-payment = { version = '3.0', default-features = false }
 exec-membership-runtime = { path = '../pallets/exec-membership/exec-membership-runtime', default-features = false }
 exec-membership = { path = "../pallets/exec-membership", default-features = false }
 exec-receipt-storage = { path = "../pallets/exec-receipt-storage", default-features = false }
-
+exec-receipt-storage-runtime = { path = '../pallets/exec-receipt-storage/exec-receipt-storage-runtime', default-features = false }
 sp-executor = { path = "../primitives/executor", default-features = false }
 
 [build-dependencies]

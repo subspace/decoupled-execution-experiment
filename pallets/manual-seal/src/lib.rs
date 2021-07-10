@@ -20,6 +20,7 @@
 //! This is suitable for a testing environment.
 
 use exec_membership_runtime::ExecutorMemberApi;
+use exec_receipt_storage_runtime::ReceiptBuilderApi;
 // use exec_membership_runtime::ExecutorMemberApi;
 use futures::prelude::*;
 use sp_consensus::{
@@ -35,7 +36,7 @@ use sc_client_api::backend::{Backend as ClientBackend, Finalizer};
 use sc_transaction_pool::txpool;
 use std::{sync::Arc, marker::PhantomData};
 use prometheus_endpoint::Registry;
-use sp_keystore::{CryptoStore, SyncCryptoStorePtr};
+use sp_keystore::SyncCryptoStorePtr;
 
 mod error;
 mod finalize_block;
@@ -144,7 +145,7 @@ pub struct InstantSealParams<B: BlockT, BI, E, C: ProvideRuntimeApi<B>, A: txpoo
 	/// Provider for inherents to include in blocks.
 	pub inherent_data_providers: InherentDataProviders,
 
-	pub keystore: Arc<dyn CryptoStore>,
+	pub keystore: SyncCryptoStorePtr,
 }
 
 /// Creates the background authorship task for the manual seal engine.
@@ -160,7 +161,7 @@ pub async fn run_manual_seal<B, BI, CB, E, C, A, SC, CS>(
 		consensus_data_provider,
 		..
 	}: ManualSealParams<B, BI, E, C, A, SC, CS>,
-	keystore: Arc<dyn CryptoStore>,
+	keystore: SyncCryptoStorePtr,
 )
 	where
 		A: txpool::ChainApi<Block=B> + 'static,
@@ -168,7 +169,7 @@ pub async fn run_manual_seal<B, BI, CB, E, C, A, SC, CS>(
 		BI: BlockImport<B, Error = sp_consensus::Error, Transaction = sp_api::TransactionFor<C, B>>
 			+ Send + Sync + 'static,
 		C: HeaderBackend<B> + Finalizer<B, CB> + ProvideRuntimeApi<B> + 'static,
-		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
+		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>  + ReceiptBuilderApi<B, <B as BlockT>::Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature>,
 		CB: ClientBackend<B> + 'static,
 		E: Environment<B> + 'static,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,
@@ -238,7 +239,7 @@ pub async fn run_instant_seal<B, BI, CB, E, C, A, SC>(
 		BI: BlockImport<B, Error = sp_consensus::Error, Transaction = sp_api::TransactionFor<C, B>>
 			+ Send + Sync + 'static,
 		C: HeaderBackend<B> + Finalizer<B, CB> + ProvideRuntimeApi<B> + 'static,
-		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
+		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId> + ReceiptBuilderApi<B, <B as BlockT>::Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature>,
 		CB: ClientBackend<B> + 'static,
 		E: Environment<B> + 'static,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,

@@ -22,13 +22,13 @@ use crate::{Error, rpc, CreatedBlock, ConsensusDataProvider};
 use std::sync::Arc;
 use codec::Encode;
 use exec_membership_runtime::ExecutorMemberApi;
-use exec_receipt_storage::Receipt;
+use exec_receipt_storage_runtime::ReceiptBuilderApi;
 use executor_discovery::am_i_executor;
 use sp_core::Public;
-use sp_keystore::{CryptoStore, SyncCryptoStore, SyncCryptoStorePtr};
+use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::{generic::{BlockId}, traits::{Block as BlockT, Header as HeaderT}};
 use futures::prelude::*;
-use sc_transaction_pool::txpool;
+use sc_transaction_pool::txpool::{self, ExtrinsicFor};
 use sp_consensus::{
 	self, BlockImport, Environment, Proposer, ForkChoiceStrategy,
 	BlockImportParams, BlockOrigin, ImportResult, SelectChain,
@@ -38,8 +38,10 @@ use std::collections::HashMap;
 use std::time::Duration;
 use sp_inherents::InherentDataProviders;
 use sp_api::{ApiErrorFor, ProvideRuntimeApi, TransactionFor};
-use sp_executor::{AuthorityId, KEY_TYPE};
+use sp_executor::{AuthorityId, KEY_TYPE, Receipt, AuthoritySignature};
 use std::collections::HashSet;
+use codec::Decode;
+use std::convert::TryFrom;
 
 /// max duration for creating a proposal in secs
 pub const MAX_PROPOSAL_DURATION: u64 = 10;
@@ -89,14 +91,14 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 		mut sender,
 		..
 	}: SealBlockParams<'_, B, BI, SC, C, E, P>,
-	keystore: Arc<dyn CryptoStore>,
+	keystore: SyncCryptoStorePtr,
 )
 	where
 		B: BlockT + Unpin + 'static,
 		BI: BlockImport<B, Error = sp_consensus::Error, Transaction = sp_api::TransactionFor<C, B>>
 			+ Send + Sync + 'static,
 		C: ProvideRuntimeApi<B> + 'static + HeaderBackend<B>,
-		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>,
+		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId> + ReceiptBuilderApi<B, <B as BlockT>::Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature>,
 		E: Environment<B>,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,
 		P: txpool::ChainApi<Block=B>,
@@ -152,7 +154,47 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 
 		match block_import.import_block(params, HashMap::new())? {
 			ImportResult::Imported(aux) => {
-				//build_er_extrinsic_and_send
+
+				let mut executor: Option<AuthorityId> = None;
+				let local_pub_keys = 
+				SyncCryptoStore::sr25519_public_keys(&*keystore, KEY_TYPE)				
+				.into_iter()
+				.collect::<HashSet<_>>();
+				let id = BlockId::hash(client.info().best_hash);
+				for key in local_pub_keys.iter() {
+					let authority = AuthorityId::from(*key);
+					if client.runtime_api().is_executor(&id, authority.clone()).expect("should not fail") {
+						executor = Some(authority);
+						break;
+					}
+				}				
+
+				if let Some(authority) = executor { 
+					let state_root = header.state_root();
+					let best_hash = client.info().best_hash;
+					let mut encoded = Vec::new();
+					state_root.encode_to(&mut encoded);
+					let signature = SyncCryptoStore::sign_with(&*keystore,
+						KEY_TYPE,
+						&authority.to_public_crypto_pair(),
+						&encoded[..],
+					).expect("should not fail");
+			
+					let er = Receipt {
+						final_root_balance: state_root.clone(),
+						last_block: best_hash.clone(), //current
+						executor: authority.clone(),
+						signed_root_balance: AuthoritySignature::try_from(signature).expect("should not fail"),
+					};
+			
+					let encoded_xt = client.runtime_api().build_extrinsic(&id,er).expect("don't fail");
+					// let xt = ExtrinsicFor::decode(&mut &*encoded_xt).expect("don't fail");
+			
+					// let _r = pool
+					// .submit_one(&id, sp_transaction_pool::TransactionSource::External, xt).await.expect("don't fail");
+				
+				}
+
 				Ok(CreatedBlock { hash: <B as BlockT>::Header::hash(&header), aux })
 			},
 			other => Err(other.into()),
@@ -161,43 +203,3 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 
 	rpc::send_result(&mut sender, future.await)
 }
-
-// async fn build_er_extrinsic_and_send<Client, Block>(keystore: Arc<dyn CryptoStore>, client: &Client, header: &Block::Header) 
-// where 
-//     Block: BlockT + Unpin + 'static,
-//     Client: ProvideRuntimeApi<Block> + 'static + HeaderBackend<Block>,
-//     <Client as ProvideRuntimeApi<Block>>::Api: ExecutorMemberApi<Block, AuthorityId>,
-// {
-// 	let executor = am_i_executor(keystore.clone(),client).await.expect("for now don't expect errors");
-// 	if let Some(authority) = executor { 
-// 		let state_root = header.state_root();
-// 		let best_hash = client.info().best_hash;
-// 		let mut encoded = Vec::new();
-// 		state_root.encode_to(&mut encoded);
-// 		let signature = keystore.sign_with(
-// 			KEY_TYPE,
-// 			&authority.to_public_crypto_pair(),
-// 			&encoded[..],
-// 		).await.expect("should not fail");
-
-// 		let er = Receipt {
-// 			final_root_balance: state_root.clone(),
-// 			last_block: best_hash.clone(), //current
-// 			executor: authority.clone(),
-// 			signed_root_balance: signature,
-// 		};
-
-// 		let xt = CheckedExtrinsic {
-// 			signed: None,
-// 			function: exec_receipt_storage::Call::broadcast_receipt(er),
-// 		};
-
-// 		pool
-// 		.submit_one(&BlockId::hash(best_hash), sp_transaction_pool::TransactionSource::External, xt)
-// 		.compat()
-// 		.map_err(|e| e.into_pool_error()
-// 			.map(Into::into)
-// 			.unwrap_or_else(|e| error::Error::Verification(Box::new(e)).into()))		
-
-// 	}
-// }

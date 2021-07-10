@@ -39,6 +39,9 @@ use frame_support::{
 		IdentityFee,
 	},
 };
+
+use parity_scale_codec::Encode;
+
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
@@ -499,6 +502,14 @@ impl_runtime_apis! {
 		fn is_executor(account: sp_executor::AuthorityId) -> bool {
 			Executor::is_member(account)
 		}
-	}	
+	}
+	
+	impl exec_receipt_storage_runtime::ReceiptBuilderApi<Block, Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature> for Runtime {
+		fn build_extrinsic(er: sp_executor::Receipt<Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature>) -> sp_std::vec::Vec<u8> {
+			UncheckedExtrinsic::new_unsigned(
+				Call::ReceiptStorage(exec_receipt_storage::Call::broadcast_receipt(er)),
+			).encode()
+		}		
+	}
 }
 
