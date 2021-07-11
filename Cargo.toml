@@ -7,3 +7,8 @@ members = [
 	'pallets/*',
 	'super-runtime',
 ]
+
+[patch.crates-io]
+# sc-service = { path = "./client/service"}
+sc-block-builder = { path = "./client/block-builder"}
+sc-basic-authorship = { path = "./client/basic-authorship"}

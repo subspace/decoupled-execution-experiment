@@ -54,7 +54,7 @@ impl<'a, A, B> BlockBuilderExt for sc_block_builder::BlockBuilder<'a, substrate_
 		sp_api::StateBackend<HashFor<substrate_test_runtime::Block>>,
 {
 	fn push_transfer(&mut self, transfer: substrate_test_runtime::Transfer) -> Result<(), sp_blockchain::Error> {
-		self.push(transfer.into_signed_tx())
+		self.push(transfer.into_signed_tx(), true)
 	}
 
 	fn push_storage_change(
@@ -62,13 +62,13 @@ impl<'a, A, B> BlockBuilderExt for sc_block_builder::BlockBuilder<'a, substrate_
 		key: Vec<u8>,
 		value: Option<Vec<u8>>,
 	) -> Result<(), sp_blockchain::Error> {
-		self.push(substrate_test_runtime::Extrinsic::StorageChange(key, value))
+		self.push(substrate_test_runtime::Extrinsic::StorageChange(key, value), true)
 	}
 
 	fn push_changes_trie_configuration_update(
 		&mut self,
 		new_config: Option<ChangesTrieConfiguration>,
 	) -> Result<(), sp_blockchain::Error> {
-		self.push(substrate_test_runtime::Extrinsic::ChangesTrieConfigUpdate(new_config))
+		self.push(substrate_test_runtime::Extrinsic::ChangesTrieConfigUpdate(new_config), true)
 	}
 }

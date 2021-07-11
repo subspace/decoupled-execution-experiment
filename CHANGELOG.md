@@ -1,5 +1,9 @@
 # Changes
 
+## 2021 Jul 11
+
+* Pin point that sweet spot to decouple executors from farmers while proposing new blocks
+
 ## 2021 Jul 8
 
 * Further work on send ER, submit to pool

@@ -150,6 +150,7 @@ pub fn new_full(config: Configuration) -> Result<TaskManager, ServiceError> {
 			client.clone(),
 			transaction_pool.clone(),
 			prometheus_registry.as_ref(),
+			keystore.clone(),
 		);
 
 		let authorship_future = sc_consensus_manual_seal::run_instant_seal(InstantSealParams {

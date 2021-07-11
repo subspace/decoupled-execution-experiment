@@ -41,6 +41,9 @@ use std::marker::PhantomData;
 
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_proposer_metrics::MetricsLink as PrometheusMetrics;
+use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
+use exec_membership_runtime::ExecutorMemberApi;
+use sp_executor::AuthorityId;
 
 /// Default maximum block size in bytes used by [`Proposer`].
 ///
@@ -60,6 +63,7 @@ pub struct ProposerFactory<A, B, C> {
 	transaction_pool: Arc<A>,
 	/// Prometheus Link,
 	metrics: PrometheusMetrics,
+	keystore: SyncCryptoStorePtr,
 	/// phantom member to pin the `Backend` type.
 	_phantom: PhantomData<B>,
 	max_block_size: usize,
@@ -71,12 +75,14 @@ impl<A, B, C> ProposerFactory<A, B, C> {
 		client: Arc<C>,
 		transaction_pool: Arc<A>,
 		prometheus: Option<&PrometheusRegistry>,
+		keystore: SyncCryptoStorePtr,
 	) -> Self {
 		ProposerFactory {
 			spawn_handle: Box::new(spawn_handle),
 			client,
 			transaction_pool,
 			metrics: PrometheusMetrics::new(prometheus),
+			keystore,
 			_phantom: PhantomData,
 			max_block_size: DEFAULT_MAX_BLOCK_SIZE,
 		}
@@ -99,7 +105,8 @@ impl<B, Block, C, A> ProposerFactory<A, B, C>
 		C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block>
 			+ Send + Sync + 'static,
 		C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>>
-			+ BlockBuilderApi<Block, Error = sp_blockchain::Error>,
+			+ BlockBuilderApi<Block, Error = sp_blockchain::Error>
+			+ ExecutorMemberApi<Block, AuthorityId>,
 {
 	pub fn init_with_now(
 		&mut self,
@@ -121,6 +128,7 @@ impl<B, Block, C, A> ProposerFactory<A, B, C>
 			transaction_pool: self.transaction_pool.clone(),
 			now,
 			metrics: self.metrics.clone(),
+			keystore: self.keystore.clone(),
 			_phantom: PhantomData,
 			max_block_size: self.max_block_size,
 		};
@@ -138,7 +146,8 @@ impl<A, B, Block, C> sp_consensus::Environment<Block> for
 			C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block>
 				+ Send + Sync + 'static,
 			C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>>
-				+ BlockBuilderApi<Block, Error = sp_blockchain::Error>,
+				+ BlockBuilderApi<Block, Error = sp_blockchain::Error>
+				+ ExecutorMemberApi<Block, AuthorityId>,
 {
 	type CreateProposer = future::Ready<Result<Self::Proposer, Self::Error>>;
 	type Proposer = Proposer<B, Block, C, A>;
@@ -162,6 +171,7 @@ pub struct Proposer<B, Block: BlockT, C, A: TransactionPool> {
 	transaction_pool: Arc<A>,
 	now: Box<dyn Fn() -> time::Instant + Send + Sync>,
 	metrics: PrometheusMetrics,
+	keystore: SyncCryptoStorePtr,
 	_phantom: PhantomData<B>,
 	max_block_size: usize,
 }
@@ -175,7 +185,8 @@ impl<A, B, Block, C> sp_consensus::Proposer<Block> for
 			C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block>
 				+ Send + Sync + 'static,
 			C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>>
-				+ BlockBuilderApi<Block, Error = sp_blockchain::Error>,
+				+ BlockBuilderApi<Block, Error = sp_blockchain::Error>
+				+ ExecutorMemberApi<Block, AuthorityId>,
 {
 	type Transaction = backend::TransactionFor<B, Block>;
 	type Proposal = Pin<Box<dyn Future<
@@ -221,7 +232,8 @@ impl<A, B, Block, C> Proposer<B, Block, C, A>
 		C: BlockBuilderProvider<B, Block, C> + HeaderBackend<Block> + ProvideRuntimeApi<Block>
 			+ Send + Sync + 'static,
 		C::Api: ApiExt<Block, StateBackend = backend::StateBackendFor<B, Block>>
-			+ BlockBuilderApi<Block, Error = sp_blockchain::Error>,
+			+ BlockBuilderApi<Block, Error = sp_blockchain::Error>
+			+ ExecutorMemberApi<Block, AuthorityId>,
 {
 	async fn propose_with(
 		self,
@@ -241,8 +253,10 @@ impl<A, B, Block, C> Proposer<B, Block, C, A>
 			record_proof,
 		)?;
 
+		let is_executor = executor_discovery::am_i_executor(self.keystore.clone(), self.client.as_ref()).await.expect("don't fail").is_some();
+
 		for inherent in block_builder.create_inherents(inherent_data)? {
-			match block_builder.push(inherent) {
+			match block_builder.push(inherent, is_executor) {
 				Err(ApplyExtrinsicFailed(Validity(e))) if e.exhausted_resources() =>
 					warn!("⚠️  Dropping non-mandatory inherent from overweight block."),
 				Err(ApplyExtrinsicFailed(Validity(e))) if e.was_mandatory() => {
@@ -290,7 +304,7 @@ impl<A, B, Block, C> Proposer<B, Block, C, A>
 			let pending_tx_data = pending_tx.data().clone();
 			let pending_tx_hash = pending_tx.hash().clone();
 			trace!("[{:?}] Pushing to the block.", pending_tx_hash);
-			match sc_block_builder::BlockBuilder::push(&mut block_builder, pending_tx_data) {
+			match sc_block_builder::BlockBuilder::push(&mut block_builder, pending_tx_data, is_executor) {
 				Ok(()) => {
 					debug!("[{:?}] Pushed to the block.", pending_tx_hash);
 				}
@@ -365,298 +379,298 @@ impl<A, B, Block, C> Proposer<B, Block, C, A>
 	}
 }
 
-#[cfg(test)]
-mod tests {
-	use super::*;
+// #[cfg(test)]
+// mod tests {
+// 	use super::*;
 
-	use parking_lot::Mutex;
-	use sp_consensus::{BlockOrigin, Proposer};
-	use substrate_test_runtime_client::{
-		prelude::*, TestClientBuilder, runtime::{Extrinsic, Transfer}, TestClientBuilderExt,
-	};
-	use sp_transaction_pool::{ChainEvent, MaintainedTransactionPool, TransactionSource};
-	use sc_transaction_pool::BasicPool;
-	use sp_api::Core;
-	use sp_blockchain::HeaderBackend;
-	use sp_runtime::traits::NumberFor;
-	use sc_client_api::Backend;
+// 	use parking_lot::Mutex;
+// 	use sp_consensus::{BlockOrigin, Proposer};
+// 	use substrate_test_runtime_client::{
+// 		prelude::*, TestClientBuilder, runtime::{Extrinsic, Transfer}, TestClientBuilderExt,
+// 	};
+// 	use sp_transaction_pool::{ChainEvent, MaintainedTransactionPool, TransactionSource};
+// 	use sc_transaction_pool::BasicPool;
+// 	use sp_api::Core;
+// 	use sp_blockchain::HeaderBackend;
+// 	use sp_runtime::traits::NumberFor;
+// 	use sc_client_api::Backend;
 
-	const SOURCE: TransactionSource = TransactionSource::External;
+// 	const SOURCE: TransactionSource = TransactionSource::External;
 
-	fn extrinsic(nonce: u64) -> Extrinsic {
-		Transfer {
-			amount: Default::default(),
-			nonce,
-			from: AccountKeyring::Alice.into(),
-			to: Default::default(),
-		}.into_signed_tx()
-	}
+// 	fn extrinsic(nonce: u64) -> Extrinsic {
+// 		Transfer {
+// 			amount: Default::default(),
+// 			nonce,
+// 			from: AccountKeyring::Alice.into(),
+// 			to: Default::default(),
+// 		}.into_signed_tx()
+// 	}
 
-	fn chain_event<B: BlockT>(header: B::Header) -> ChainEvent<B>
-		where NumberFor<B>: From<u64>
-	{
-		ChainEvent::NewBestBlock {
-			hash: header.hash(),
-			tree_route: None,
-		}
-	}
+// 	fn chain_event<B: BlockT>(header: B::Header) -> ChainEvent<B>
+// 		where NumberFor<B>: From<u64>
+// 	{
+// 		ChainEvent::NewBestBlock {
+// 			hash: header.hash(),
+// 			tree_route: None,
+// 		}
+// 	}
 
-	#[test]
-	fn should_cease_building_block_when_deadline_is_reached() {
-		// given
-		let client = Arc::new(substrate_test_runtime_client::new());
-		let spawner = sp_core::testing::TaskExecutor::new();
-		let txpool = BasicPool::new_full(
-			Default::default(),
-			true.into(),
-			None,
-			spawner.clone(),
-			client.clone(),
-		);
+// 	#[test]
+// 	fn should_cease_building_block_when_deadline_is_reached() {
+// 		// given
+// 		let client = Arc::new(substrate_test_runtime_client::new());
+// 		let spawner = sp_core::testing::TaskExecutor::new();
+// 		let txpool = BasicPool::new_full(
+// 			Default::default(),
+// 			true.into(),
+// 			None,
+// 			spawner.clone(),
+// 			client.clone(),
+// 		);
 
-		futures::executor::block_on(
-			txpool.submit_at(&BlockId::number(0), SOURCE, vec![extrinsic(0), extrinsic(1)])
-		).unwrap();
+// 		futures::executor::block_on(
+// 			txpool.submit_at(&BlockId::number(0), SOURCE, vec![extrinsic(0), extrinsic(1)])
+// 		).unwrap();
 
-		futures::executor::block_on(
-			txpool.maintain(chain_event(
-				client.header(&BlockId::Number(0u64))
-					.expect("header get error")
-					.expect("there should be header")
-			))
-		);
+// 		futures::executor::block_on(
+// 			txpool.maintain(chain_event(
+// 				client.header(&BlockId::Number(0u64))
+// 					.expect("header get error")
+// 					.expect("there should be header")
+// 			))
+// 		);
 
-		let mut proposer_factory = ProposerFactory::new(
-			spawner.clone(),
-			client.clone(),
-			txpool.clone(),
-			None,
-		);
+// 		let mut proposer_factory = ProposerFactory::new(
+// 			spawner.clone(),
+// 			client.clone(),
+// 			txpool.clone(),
+// 			None,
+// 		);
 
-		let cell = Mutex::new((false, time::Instant::now()));
-		let proposer = proposer_factory.init_with_now(
-			&client.header(&BlockId::number(0)).unwrap().unwrap(),
-			Box::new(move || {
-				let mut value = cell.lock();
-				if !value.0 {
-					value.0 = true;
-					return value.1;
-				}
-				let old = value.1;
-				let new = old + time::Duration::from_secs(2);
-				*value = (true, new);
-				old
-			})
-		);
+// 		let cell = Mutex::new((false, time::Instant::now()));
+// 		let proposer = proposer_factory.init_with_now(
+// 			&client.header(&BlockId::number(0)).unwrap().unwrap(),
+// 			Box::new(move || {
+// 				let mut value = cell.lock();
+// 				if !value.0 {
+// 					value.0 = true;
+// 					return value.1;
+// 				}
+// 				let old = value.1;
+// 				let new = old + time::Duration::from_secs(2);
+// 				*value = (true, new);
+// 				old
+// 			})
+// 		);
 
-		// when
-		let deadline = time::Duration::from_secs(3);
-		let block = futures::executor::block_on(
-			proposer.propose(Default::default(), Default::default(), deadline, RecordProof::No)
-		).map(|r| r.block).unwrap();
+// 		// when
+// 		let deadline = time::Duration::from_secs(3);
+// 		let block = futures::executor::block_on(
+// 			proposer.propose(Default::default(), Default::default(), deadline, RecordProof::No)
+// 		).map(|r| r.block).unwrap();
 
-		// then
-		// block should have some extrinsics although we have some more in the pool.
-		assert_eq!(block.extrinsics().len(), 1);
-		assert_eq!(txpool.ready().count(), 2);
-	}
+// 		// then
+// 		// block should have some extrinsics although we have some more in the pool.
+// 		assert_eq!(block.extrinsics().len(), 1);
+// 		assert_eq!(txpool.ready().count(), 2);
+// 	}
 
-	#[test]
-	fn should_not_panic_when_deadline_is_reached() {
-		let client = Arc::new(substrate_test_runtime_client::new());
-		let spawner = sp_core::testing::TaskExecutor::new();
-		let txpool = BasicPool::new_full(
-			Default::default(),
-			true.into(),
-			None,
-			spawner.clone(),
-			client.clone(),
-		);
+// 	#[test]
+// 	fn should_not_panic_when_deadline_is_reached() {
+// 		let client = Arc::new(substrate_test_runtime_client::new());
+// 		let spawner = sp_core::testing::TaskExecutor::new();
+// 		let txpool = BasicPool::new_full(
+// 			Default::default(),
+// 			true.into(),
+// 			None,
+// 			spawner.clone(),
+// 			client.clone(),
+// 		);
 
-		let mut proposer_factory = ProposerFactory::new(
-			spawner.clone(),
-			client.clone(),
-			txpool.clone(),
-			None,
-		);
+// 		let mut proposer_factory = ProposerFactory::new(
+// 			spawner.clone(),
+// 			client.clone(),
+// 			txpool.clone(),
+// 			None,
+// 		);
 
-		let cell = Mutex::new((false, time::Instant::now()));
-		let proposer = proposer_factory.init_with_now(
-			&client.header(&BlockId::number(0)).unwrap().unwrap(),
-			Box::new(move || {
-				let mut value = cell.lock();
-				if !value.0 {
-					value.0 = true;
-					return value.1;
-				}
-				let new = value.1 + time::Duration::from_secs(160);
-				*value = (true, new);
-				new
-			})
-		);
+// 		let cell = Mutex::new((false, time::Instant::now()));
+// 		let proposer = proposer_factory.init_with_now(
+// 			&client.header(&BlockId::number(0)).unwrap().unwrap(),
+// 			Box::new(move || {
+// 				let mut value = cell.lock();
+// 				if !value.0 {
+// 					value.0 = true;
+// 					return value.1;
+// 				}
+// 				let new = value.1 + time::Duration::from_secs(160);
+// 				*value = (true, new);
+// 				new
+// 			})
+// 		);
 
-		let deadline = time::Duration::from_secs(1);
-		futures::executor::block_on(
-			proposer.propose(Default::default(), Default::default(), deadline, RecordProof::No)
-		).map(|r| r.block).unwrap();
-	}
+// 		let deadline = time::Duration::from_secs(1);
+// 		futures::executor::block_on(
+// 			proposer.propose(Default::default(), Default::default(), deadline, RecordProof::No)
+// 		).map(|r| r.block).unwrap();
+// 	}
 
-	#[test]
-	fn proposed_storage_changes_should_match_execute_block_storage_changes() {
-		let (client, backend) = TestClientBuilder::new().build_with_backend();
-		let client = Arc::new(client);
-		let spawner = sp_core::testing::TaskExecutor::new();
-		let txpool = BasicPool::new_full(
-			Default::default(),
-			true.into(),
-			None,
-			spawner.clone(),
-			client.clone(),
-		);
+// 	#[test]
+// 	fn proposed_storage_changes_should_match_execute_block_storage_changes() {
+// 		let (client, backend) = TestClientBuilder::new().build_with_backend();
+// 		let client = Arc::new(client);
+// 		let spawner = sp_core::testing::TaskExecutor::new();
+// 		let txpool = BasicPool::new_full(
+// 			Default::default(),
+// 			true.into(),
+// 			None,
+// 			spawner.clone(),
+// 			client.clone(),
+// 		);
 
-		let genesis_hash = client.info().best_hash;
-		let block_id = BlockId::Hash(genesis_hash);
+// 		let genesis_hash = client.info().best_hash;
+// 		let block_id = BlockId::Hash(genesis_hash);
 
-		futures::executor::block_on(
-			txpool.submit_at(&BlockId::number(0), SOURCE, vec![extrinsic(0)]),
-		).unwrap();
+// 		futures::executor::block_on(
+// 			txpool.submit_at(&BlockId::number(0), SOURCE, vec![extrinsic(0)]),
+// 		).unwrap();
 
-		futures::executor::block_on(
-			txpool.maintain(chain_event(
-				client.header(&BlockId::Number(0u64))
-					.expect("header get error")
-					.expect("there should be header"),
-			))
-		);
+// 		futures::executor::block_on(
+// 			txpool.maintain(chain_event(
+// 				client.header(&BlockId::Number(0u64))
+// 					.expect("header get error")
+// 					.expect("there should be header"),
+// 			))
+// 		);
 
-		let mut proposer_factory = ProposerFactory::new(
-			spawner.clone(),
-			client.clone(),
-			txpool.clone(),
-			None,
-		);
+// 		let mut proposer_factory = ProposerFactory::new(
+// 			spawner.clone(),
+// 			client.clone(),
+// 			txpool.clone(),
+// 			None,
+// 		);
 
-		let proposer = proposer_factory.init_with_now(
-			&client.header(&block_id).unwrap().unwrap(),
-			Box::new(move || time::Instant::now()),
-		);
+// 		let proposer = proposer_factory.init_with_now(
+// 			&client.header(&block_id).unwrap().unwrap(),
+// 			Box::new(move || time::Instant::now()),
+// 		);
 
-		let deadline = time::Duration::from_secs(9);
-		let proposal = futures::executor::block_on(
-			proposer.propose(Default::default(), Default::default(), deadline, RecordProof::No),
-		).unwrap();
+// 		let deadline = time::Duration::from_secs(9);
+// 		let proposal = futures::executor::block_on(
+// 			proposer.propose(Default::default(), Default::default(), deadline, RecordProof::No),
+// 		).unwrap();
 
-		assert_eq!(proposal.block.extrinsics().len(), 1);
+// 		assert_eq!(proposal.block.extrinsics().len(), 1);
 
-		let api = client.runtime_api();
-		api.execute_block(&block_id, proposal.block).unwrap();
+// 		let api = client.runtime_api();
+// 		api.execute_block(&block_id, proposal.block).unwrap();
 
-		let state = backend.state_at(block_id).unwrap();
-		let changes_trie_state = backend::changes_tries_state_at_block(
-			&block_id,
-			backend.changes_trie_storage(),
-		).unwrap();
+// 		let state = backend.state_at(block_id).unwrap();
+// 		let changes_trie_state = backend::changes_tries_state_at_block(
+// 			&block_id,
+// 			backend.changes_trie_storage(),
+// 		).unwrap();
 
-		let storage_changes = api.into_storage_changes(
-			&state,
-			changes_trie_state.as_ref(),
-			genesis_hash,
-		).unwrap();
+// 		let storage_changes = api.into_storage_changes(
+// 			&state,
+// 			changes_trie_state.as_ref(),
+// 			genesis_hash,
+// 		).unwrap();
 
-		assert_eq!(
-			proposal.storage_changes.transaction_storage_root,
-			storage_changes.transaction_storage_root,
-		);
-	}
+// 		assert_eq!(
+// 			proposal.storage_changes.transaction_storage_root,
+// 			storage_changes.transaction_storage_root,
+// 		);
+// 	}
 
-	#[test]
-	fn should_not_remove_invalid_transactions_when_skipping() {
-		// given
-		let mut client = Arc::new(substrate_test_runtime_client::new());
-		let spawner = sp_core::testing::TaskExecutor::new();
-		let txpool = BasicPool::new_full(
-			Default::default(),
-			true.into(),
-			None,
-			spawner.clone(),
-			client.clone(),
-		);
+// 	#[test]
+// 	fn should_not_remove_invalid_transactions_when_skipping() {
+// 		// given
+// 		let mut client = Arc::new(substrate_test_runtime_client::new());
+// 		let spawner = sp_core::testing::TaskExecutor::new();
+// 		let txpool = BasicPool::new_full(
+// 			Default::default(),
+// 			true.into(),
+// 			None,
+// 			spawner.clone(),
+// 			client.clone(),
+// 		);
 
-		futures::executor::block_on(
-			txpool.submit_at(&BlockId::number(0), SOURCE, vec![
-				extrinsic(0),
-				extrinsic(1),
-				Transfer {
-					amount: Default::default(),
-					nonce: 2,
-					from: AccountKeyring::Alice.into(),
-					to: Default::default(),
-				}.into_resources_exhausting_tx(),
-				extrinsic(3),
-				Transfer {
-					amount: Default::default(),
-					nonce: 4,
-					from: AccountKeyring::Alice.into(),
-					to: Default::default(),
-				}.into_resources_exhausting_tx(),
-				extrinsic(5),
-				extrinsic(6),
-			])
-		).unwrap();
+// 		futures::executor::block_on(
+// 			txpool.submit_at(&BlockId::number(0), SOURCE, vec![
+// 				extrinsic(0),
+// 				extrinsic(1),
+// 				Transfer {
+// 					amount: Default::default(),
+// 					nonce: 2,
+// 					from: AccountKeyring::Alice.into(),
+// 					to: Default::default(),
+// 				}.into_resources_exhausting_tx(),
+// 				extrinsic(3),
+// 				Transfer {
+// 					amount: Default::default(),
+// 					nonce: 4,
+// 					from: AccountKeyring::Alice.into(),
+// 					to: Default::default(),
+// 				}.into_resources_exhausting_tx(),
+// 				extrinsic(5),
+// 				extrinsic(6),
+// 			])
+// 		).unwrap();
 
-		let mut proposer_factory = ProposerFactory::new(
-			spawner.clone(),
-			client.clone(),
-			txpool.clone(),
-			None,
-		);
-		let mut propose_block = |
-			client: &TestClient,
-			number,
-			expected_block_extrinsics,
-			expected_pool_transactions,
-		| {
-			let proposer = proposer_factory.init_with_now(
-				&client.header(&BlockId::number(number)).unwrap().unwrap(),
-				Box::new(move || time::Instant::now()),
-			);
+// 		let mut proposer_factory = ProposerFactory::new(
+// 			spawner.clone(),
+// 			client.clone(),
+// 			txpool.clone(),
+// 			None,
+// 		);
+// 		let mut propose_block = |
+// 			client: &TestClient,
+// 			number,
+// 			expected_block_extrinsics,
+// 			expected_pool_transactions,
+// 		| {
+// 			let proposer = proposer_factory.init_with_now(
+// 				&client.header(&BlockId::number(number)).unwrap().unwrap(),
+// 				Box::new(move || time::Instant::now()),
+// 			);
 
-			// when
-			let deadline = time::Duration::from_secs(9);
-			let block = futures::executor::block_on(
-				proposer.propose(Default::default(), Default::default(), deadline, RecordProof::No)
-			).map(|r| r.block).unwrap();
+// 			// when
+// 			let deadline = time::Duration::from_secs(9);
+// 			let block = futures::executor::block_on(
+// 				proposer.propose(Default::default(), Default::default(), deadline, RecordProof::No)
+// 			).map(|r| r.block).unwrap();
 
-			// then
-			// block should have some extrinsics although we have some more in the pool.
-			assert_eq!(block.extrinsics().len(), expected_block_extrinsics);
-			assert_eq!(txpool.ready().count(), expected_pool_transactions);
+// 			// then
+// 			// block should have some extrinsics although we have some more in the pool.
+// 			assert_eq!(block.extrinsics().len(), expected_block_extrinsics);
+// 			assert_eq!(txpool.ready().count(), expected_pool_transactions);
 
-			block
-		};
+// 			block
+// 		};
 
-		futures::executor::block_on(
-			txpool.maintain(chain_event(
-				client.header(&BlockId::Number(0u64))
-					.expect("header get error")
-					.expect("there should be header")
-			))
-		);
+// 		futures::executor::block_on(
+// 			txpool.maintain(chain_event(
+// 				client.header(&BlockId::Number(0u64))
+// 					.expect("header get error")
+// 					.expect("there should be header")
+// 			))
+// 		);
 
-		// let's create one block and import it
-		let block = propose_block(&client, 0, 2, 7);
-		client.import(BlockOrigin::Own, block).unwrap();
+// 		// let's create one block and import it
+// 		let block = propose_block(&client, 0, 2, 7);
+// 		client.import(BlockOrigin::Own, block).unwrap();
 
-		futures::executor::block_on(
-			txpool.maintain(chain_event(
-				client.header(&BlockId::Number(1))
-					.expect("header get error")
-					.expect("there should be header")
-			))
-		);
+// 		futures::executor::block_on(
+// 			txpool.maintain(chain_event(
+// 				client.header(&BlockId::Number(1))
+// 					.expect("header get error")
+// 					.expect("there should be header")
+// 			))
+// 		);
 
-		// now let's make sure that we can still make some progress
-		let block = propose_block(&client, 1, 2, 5);
-		client.import(BlockOrigin::Own, block).unwrap();
-	}
-}
+// 		// now let's make sure that we can still make some progress
+// 		let block = propose_block(&client, 1, 2, 5);
+// 		client.import(BlockOrigin::Own, block).unwrap();
+// 	}
+// }

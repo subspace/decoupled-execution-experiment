@@ -11,7 +11,7 @@ pub async fn am_i_executor<Client, Block>(
     client: &Client,
 ) -> Result<Option<AuthorityId>, ApiErrorFor<Client, Block>>
 where
-    Block: BlockT + Unpin + 'static,
+    Block: BlockT,
     Client: ProvideRuntimeApi<Block> + 'static + HeaderBackend<Block>,
     <Client as ProvideRuntimeApi<Block>>::Api: ExecutorMemberApi<Block, AuthorityId>,
 {
