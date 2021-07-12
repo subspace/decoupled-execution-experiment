@@ -3,8 +3,7 @@
 #![warn(missing_docs)]
 
 use frame_support::{RuntimeDebug, debug};
-use sp_runtime::traits::{self, Saturating, One};
-use sp_std::fmt;
+use sp_runtime::OpaqueExtrinsic;
 use sp_executor::Receipt;
 
 #[cfg(not(feature = "std"))]

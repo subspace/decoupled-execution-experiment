@@ -200,7 +200,7 @@ pub async fn run_manual_seal<B, BI, CB, E, C, A, SC, CS>(
 						client: client.clone(),
 					},
 					keystore.clone(),
-				).await;
+				).await
 			}
 			EngineCommand::FinalizeBlock { hash, sender, justification } => {
 				finalize_block(

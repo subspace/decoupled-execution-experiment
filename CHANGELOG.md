@@ -1,5 +1,9 @@
 # Changes
 
+## 2021 Jul 12
+
+* Further work on send ER, submit to pool, figure out compile error
+
 ## 2021 Jul 11
 
 * Pin point that sweet spot to decouple executors from farmers while proposing new blocks

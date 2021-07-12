@@ -865,6 +865,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 					ExecutionContext::Importing
 				};
 
+				// TODO: only execute if is_executor
 				runtime_api.execute_block_with_context(
 					&at,
 					execution_context,

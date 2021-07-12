@@ -505,7 +505,7 @@ impl_runtime_apis! {
 	}
 	
 	impl exec_receipt_storage_runtime::ReceiptBuilderApi<Block, Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature> for Runtime {
-		fn build_extrinsic(er: sp_executor::Receipt<Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature>) -> sp_std::vec::Vec<u8> {
+		fn build_extrinsic(er: sp_executor::Receipt<Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature>) -> Vec<u8> {
 			UncheckedExtrinsic::new_unsigned(
 				Call::ReceiptStorage(exec_receipt_storage::Call::broadcast_receipt(er)),
 			).encode()

@@ -20,13 +20,12 @@
 
 use crate::{Error, rpc, CreatedBlock, ConsensusDataProvider};
 use std::sync::Arc;
-use codec::Encode;
+use codec::{Codec, Encode};
 use exec_membership_runtime::ExecutorMemberApi;
 use exec_receipt_storage_runtime::ReceiptBuilderApi;
-use executor_discovery::am_i_executor;
 use sp_core::Public;
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
-use sp_runtime::{generic::{BlockId}, traits::{Block as BlockT, Header as HeaderT}};
+use sp_runtime::{OpaqueExtrinsic, generic::{BlockId}, traits::{Block as BlockT, Header as HeaderT}};
 use futures::prelude::*;
 use sc_transaction_pool::txpool::{self, ExtrinsicFor};
 use sp_consensus::{
@@ -155,21 +154,22 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 		match block_import.import_block(params, HashMap::new())? {
 			ImportResult::Imported(aux) => {
 
-				let mut executor: Option<AuthorityId> = None;
+				let id = BlockId::hash(client.info().best_hash);
+				let mut is_executor: Option<AuthorityId> = None;
 				let local_pub_keys = 
 				SyncCryptoStore::sr25519_public_keys(&*keystore, KEY_TYPE)				
 				.into_iter()
 				.collect::<HashSet<_>>();
-				let id = BlockId::hash(client.info().best_hash);
 				for key in local_pub_keys.iter() {
 					let authority = AuthorityId::from(*key);
 					if client.runtime_api().is_executor(&id, authority.clone()).expect("should not fail") {
-						executor = Some(authority);
+						is_executor = Some(authority);
 						break;
 					}
-				}				
+				}
+				// let is_executor = executor_discovery::am_i_executor(keystore.clone(), client.as_ref()).await.expect("don't fail");
 
-				if let Some(authority) = executor { 
+				if let Some(authority) = is_executor { 
 					let state_root = header.state_root();
 					let best_hash = client.info().best_hash;
 					let mut encoded = Vec::new();
@@ -187,11 +187,10 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 						signed_root_balance: AuthoritySignature::try_from(signature).expect("should not fail"),
 					};
 			
-					let encoded_xt = client.runtime_api().build_extrinsic(&id,er).expect("don't fail");
-					// let xt = ExtrinsicFor::decode(&mut &*encoded_xt).expect("don't fail");
-			
-					// let _r = pool
-					// .submit_one(&id, sp_transaction_pool::TransactionSource::External, xt).await.expect("don't fail");
+					let opaque_xt = client.runtime_api().build_extrinsic(&id,er).expect("don't fail");
+					let xt = Decode::decode(&mut &opaque_xt[..]).expect("don't fail");
+					let _r = pool
+					.submit_one(&id, sp_transaction_pool::TransactionSource::External, xt).await.expect("don't fail");
 				
 				}
 
