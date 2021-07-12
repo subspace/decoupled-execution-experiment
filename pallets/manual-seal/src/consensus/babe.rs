@@ -239,7 +239,7 @@ impl<B, C> ConsensusDataProvider<B> for BabeConsensusDataProvider<B, C>
 
 		params.intermediates.insert(
 			Cow::from(INTERMEDIATE_KEY),
-			Box::new(BabeIntermediate::<B> { epoch_descriptor }) as Box<dyn Any>,
+			Box::new(BabeIntermediate::<B> { epoch_descriptor }) as Box<_>,
 		);
 
 		Ok(())

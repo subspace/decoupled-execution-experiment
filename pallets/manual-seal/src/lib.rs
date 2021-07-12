@@ -171,9 +171,9 @@ pub async fn run_manual_seal<B, BI, CB, E, C, A, SC, CS>(
 		C: HeaderBackend<B> + Finalizer<B, CB> + ProvideRuntimeApi<B> + 'static,
 		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId>  + ReceiptBuilderApi<B, <B as BlockT>::Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature>,
 		CB: ClientBackend<B> + 'static,
-		E: Environment<B> + 'static,
+		E: Environment<B> + Send + 'static,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,
-		CS: Stream<Item=EngineCommand<<B as BlockT>::Hash>> + Unpin + 'static,
+		CS: Stream<Item=EngineCommand<<B as BlockT>::Hash>> + Unpin + Send + 'static,
 		SC: SelectChain<B> + 'static,
 		TransactionFor<C, B>: 'static,
 {
@@ -220,7 +220,7 @@ pub async fn run_manual_seal<B, BI, CB, E, C, A, SC, CS>(
 /// runs the background authorship task for the instant seal engine.
 /// instant-seal creates a new block for every transaction imported into
 /// the transaction pool.
-pub async fn run_instant_seal<B, BI, CB, E, C, A, SC>(
+pub fn run_instant_seal<B, BI, CB, E, C, A, SC>(
 	InstantSealParams {
 		block_import,
 		env,
@@ -232,7 +232,7 @@ pub async fn run_instant_seal<B, BI, CB, E, C, A, SC>(
 		keystore,
 		..
 	}: InstantSealParams<B, BI, E, C, A, SC>
-)
+) -> impl std::future::Future<Output = ()> + Send + 'static
 	where
 		A: txpool::ChainApi<Block=B> + 'static,
 		B: BlockT + Unpin + 'static,
@@ -241,7 +241,7 @@ pub async fn run_instant_seal<B, BI, CB, E, C, A, SC>(
 		C: HeaderBackend<B> + Finalizer<B, CB> + ProvideRuntimeApi<B> + 'static,
 		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId> + ReceiptBuilderApi<B, <B as BlockT>::Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature>,
 		CB: ClientBackend<B> + 'static,
-		E: Environment<B> + 'static,
+		E: Environment<B> + Send + 'static,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,
 		SC: SelectChain<B> + 'static,
 		TransactionFor<C, B>: 'static,
@@ -271,7 +271,7 @@ pub async fn run_instant_seal<B, BI, CB, E, C, A, SC>(
 			inherent_data_providers,
 		},
 		keystore,
-	).await
+	)
 }
 
 #[cfg(test)]

@@ -71,11 +71,12 @@ pub struct SealBlockParams<'a, B: BlockT, BI, SC, C: ProvideRuntimeApi<B>, E, P:
 	/// inherent data provider
 	pub inherent_data_provider: &'a InherentDataProviders,
 
-	// pub keystore: SyncCryptoStorePtr,	
+	// pub keystore: SyncCryptoStorePtr,
 }
 
+// TODO: Change this back into regular async function once `Send` issue is resolved
 /// seals a new block with the given params
-pub async fn seal_block<B, BI, SC, C, E, P>(
+pub fn seal_block<'a, B, BI, SC, C, E, P>(
 	SealBlockParams {
 		create_empty,
 		finalize,
@@ -89,116 +90,124 @@ pub async fn seal_block<B, BI, SC, C, E, P>(
 		consensus_data_provider: digest_provider,
 		mut sender,
 		..
-	}: SealBlockParams<'_, B, BI, SC, C, E, P>,
+	}: SealBlockParams<'a, B, BI, SC, C, E, P>,
 	keystore: SyncCryptoStorePtr,
-)
+) -> impl std::future::Future<Output = ()> + Send + 'a
 	where
 		B: BlockT + Unpin + 'static,
 		BI: BlockImport<B, Error = sp_consensus::Error, Transaction = sp_api::TransactionFor<C, B>>
 			+ Send + Sync + 'static,
 		C: ProvideRuntimeApi<B> + 'static + HeaderBackend<B>,
 		<C as ProvideRuntimeApi<B>>::Api: ExecutorMemberApi<B, AuthorityId> + ReceiptBuilderApi<B, <B as BlockT>::Hash, sp_executor::AuthorityId, sp_executor::AuthoritySignature>,
-		E: Environment<B>,
+		E: Environment<B> + Send,
 		E::Proposer: Proposer<B, Transaction = TransactionFor<C, B>>,
-		P: txpool::ChainApi<Block=B>,
+		P: txpool::ChainApi<Block=B> + 'a,
 		SC: SelectChain<B>,
-		TransactionFor<C, B>: 'static,
+		TransactionFor<C, B>: Send + 'static,
 {
-	let future = async {
-		if pool.validated_pool().status().ready == 0 && !create_empty {
-			return Err(Error::EmptyTransactionPool)
-		}
-
-		// get the header to build this new block on.
-		// use the parent_hash supplied via `EngineCommand`
-		// or fetch the best_block.
-		let parent = match parent_hash {
-			Some(hash) => {
-				match client.header(BlockId::Hash(hash))? {
-					Some(header) => header,
-					None => return Err(Error::BlockNotFound(format!("{}", hash))),
-				}
+	async move {
+		let future = async {
+			if pool.validated_pool().status().ready == 0 && !create_empty {
+				return Err(Error::EmptyTransactionPool)
 			}
-			None => select_chain.best_chain()?
-		};
 
-		let proposer = env.init(&parent)
-			.map_err(|err| Error::StringError(format!("{:?}", err))).await?;
-		let id = inherent_data_provider.create_inherent_data()?;
-		let inherents_len = id.len();
-
-		let digest = if let Some(digest_provider) = digest_provider {
-			digest_provider.create_digest(&parent, &id)?
-		} else {
-			Default::default()
-		};
-
-		let proposal = proposer.propose(id.clone(), digest, Duration::from_secs(MAX_PROPOSAL_DURATION), false.into())
-			.map_err(|err| Error::StringError(format!("{:?}", err))).await?;
-
-		if proposal.block.extrinsics().len() == inherents_len && !create_empty {
-			return Err(Error::EmptyTransactionPool)
-		}
-
-		let (header, body) = proposal.block.deconstruct();
-		let mut params = BlockImportParams::new(BlockOrigin::Own, header.clone());
-		params.body = Some(body);
-		params.finalized = finalize;
-		params.fork_choice = Some(ForkChoiceStrategy::LongestChain);
-		params.storage_changes = Some(proposal.storage_changes);
-
-		if let Some(digest_provider) = digest_provider {
-			digest_provider.append_block_import(&parent, &mut params, &id)?;
-		}
-
-		match block_import.import_block(params, HashMap::new())? {
-			ImportResult::Imported(aux) => {
-
-				let id = BlockId::hash(client.info().best_hash);
-				let mut is_executor: Option<AuthorityId> = None;
-				let local_pub_keys = 
-				SyncCryptoStore::sr25519_public_keys(&*keystore, KEY_TYPE)				
-				.into_iter()
-				.collect::<HashSet<_>>();
-				for key in local_pub_keys.iter() {
-					let authority = AuthorityId::from(*key);
-					if client.runtime_api().is_executor(&id, authority.clone()).expect("should not fail") {
-						is_executor = Some(authority);
-						break;
+			// get the header to build this new block on.
+			// use the parent_hash supplied via `EngineCommand`
+			// or fetch the best_block.
+			let parent = match parent_hash {
+				Some(hash) => {
+					match client.header(BlockId::Hash(hash))? {
+						Some(header) => header,
+						None => return Err(Error::BlockNotFound(format!("{}", hash))),
 					}
 				}
-				// let is_executor = executor_discovery::am_i_executor(keystore.clone(), client.as_ref()).await.expect("don't fail");
+				None => select_chain.best_chain()?
+			};
 
-				if let Some(authority) = is_executor { 
-					let state_root = header.state_root();
-					let best_hash = client.info().best_hash;
-					let mut encoded = Vec::new();
-					state_root.encode_to(&mut encoded);
-					let signature = SyncCryptoStore::sign_with(&*keystore,
-						KEY_TYPE,
-						&authority.to_public_crypto_pair(),
-						&encoded[..],
-					).expect("should not fail");
-			
-					let er = Receipt {
-						final_root_balance: state_root.clone(),
-						last_block: best_hash.clone(), //current
-						executor: authority.clone(),
-						signed_root_balance: AuthoritySignature::try_from(signature).expect("should not fail"),
-					};
-			
-					let opaque_xt = client.runtime_api().build_extrinsic(&id,er).expect("don't fail");
-					let xt = Decode::decode(&mut &opaque_xt[..]).expect("don't fail");
-					let _r = pool
-					.submit_one(&id, sp_transaction_pool::TransactionSource::External, xt).await.expect("don't fail");
-				
-				}
+			let proposer = env.init(&parent)
+				.map_err(|err| Error::StringError(format!("{:?}", err))).await?;
+			let id = inherent_data_provider.create_inherent_data()?;
+			let inherents_len = id.len();
 
-				Ok(CreatedBlock { hash: <B as BlockT>::Header::hash(&header), aux })
-			},
-			other => Err(other.into()),
-		}
-	};
+			let digest = if let Some(digest_provider) = digest_provider {
+				digest_provider.create_digest(&parent, &id)?
+			} else {
+				Default::default()
+			};
 
-	rpc::send_result(&mut sender, future.await)
+			let proposal = proposer.propose(id.clone(), digest, Duration::from_secs(MAX_PROPOSAL_DURATION), false.into())
+				.map_err(|err| Error::StringError(format!("{:?}", err))).await?;
+
+			if proposal.block.extrinsics().len() == inherents_len && !create_empty {
+				return Err(Error::EmptyTransactionPool)
+			}
+
+			let (header, body) = proposal.block.deconstruct();
+			let mut params = BlockImportParams::<B, TransactionFor<C, B>>::new(BlockOrigin::Own, header.clone());
+			// TODO: Uncomment below once issue with `Send` is resolved, it should just compile
+			// params.body = Some(body);
+			// params.finalized = finalize;
+			// params.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+			// params.storage_changes = Some(proposal.storage_changes);
+
+			// if let Some(digest_provider) = digest_provider {
+			// 	digest_provider.append_block_import(&parent, &mut params, &id)?;
+			// }
+
+		// 	match block_import.import_block(params, HashMap::new())? {
+		// 		ImportResult::Imported(aux) => {
+		// 			let id = BlockId::hash(client.info().best_hash);
+		// 			let mut is_executor: Option<AuthorityId> = None;
+		// 			let local_pub_keys =
+		// 			SyncCryptoStore::sr25519_public_keys(&*keystore, KEY_TYPE)
+		// 			.into_iter()
+		// 			.collect::<HashSet<_>>();
+		// 			for key in local_pub_keys.iter() {
+		// 				let authority = AuthorityId::from(*key);
+		// 				if client.runtime_api().is_executor(&id, authority.clone()).expect("should not fail") {
+		// 					is_executor = Some(authority);
+		// 					break;
+		// 				}
+		// 			}
+		// 			// let is_executor = executor_discovery::am_i_executor(keystore.clone(), client.as_ref()).await.expect("don't fail");
+		//
+		// 			if let Some(authority) = is_executor {
+		// 				let state_root = header.state_root();
+		// 				let best_hash = client.info().best_hash;
+		// 				let mut encoded = Vec::new();
+		// 				state_root.encode_to(&mut encoded);
+		// 				let signature = SyncCryptoStore::sign_with(&*keystore,
+		// 					KEY_TYPE,
+		// 					&authority.to_public_crypto_pair(),
+		// 					&encoded[..],
+		// 				).expect("should not fail");
+		//
+		// 				let er = Receipt {
+		// 					final_root_balance: state_root.clone(),
+		// 					last_block: best_hash.clone(), //current
+		// 					executor: authority.clone(),
+		// 					signed_root_balance: AuthoritySignature::try_from(signature).expect("should not fail"),
+		// 				};
+		//
+		// 				let opaque_xt = client.runtime_api().build_extrinsic(&id,er).expect("don't fail");
+		// 				let xt = Decode::decode(&mut &opaque_xt[..]).expect("don't fail");
+		// 				let fut: std::pin::Pin<Box<dyn Future<Output = ()> + Send>> = Box::pin(async move {
+		// 					let _r = pool
+		// 						.submit_one(&id, sp_transaction_pool::TransactionSource::External, xt).await.expect("don't fail");
+		// 				});
+		//
+		// 				fut.await;
+		// 			}
+		//
+		// 			Ok(CreatedBlock { hash: <B as BlockT>::Header::hash(&header), aux })
+		// 		},
+		// 		other => Err(other.into()),
+		// 	}
+
+			// TODO: Remove this once issue with `Send` is resolved, it should just compile
+			todo!()
+		};
+
+		rpc::send_result(&mut sender, future.await)
+	}
 }
